@@ -1164,11 +1164,11 @@ function renderUserBar(){
   <div class="userbar-inner">
 
    <div>
-    المستخدم:
+    ${translateString('المستخدم')}:
     <b>${esc(currentProfile.username || currentProfile.full_name)}</b>
 
     <span class="badge badge-blue">
-     ${esc(currentProfile.role)}
+     ${esc(translateString(currentProfile.role))}
     </span>
    </div>
 
@@ -1176,7 +1176,7 @@ function renderUserBar(){
     class="btn-red"
     onclick="logout()"
    >
-    تسجيل الخروج
+    ${translateString('تسجيل الخروج')}
    </button>
 
   </div>
@@ -1218,10 +1218,10 @@ function applyPermissions(){
  const roleNote = document.getElementById('roleNote');
  if(roleNote){
   roleNote.innerText = employee
-   ? 'وضع الموظف: يمكنك تسجيل حضورك وإدارة بريكاتك ووقتها فقط.'
+   ? translateString('وضع الموظف: يمكنك تسجيل حضورك وإدارة بريكاتك ووقتها فقط.')
    : admin
-    ? 'وضع Admin: جميع صلاحيات الإدارة متاحة.'
-    : 'وضع المدير: صلاحيات الإدارة والتقارير متاحة.';
+    ? translateString('وضع Admin: جميع صلاحيات الإدارة متاحة.')
+    : translateString('وضع المدير: صلاحيات الإدارة والتقارير متاحة.');
  }
 
 }
@@ -3589,7 +3589,7 @@ function printWeeklyReport(){
   <body>
 
    <h1>
-    التقرير الأسبوعي
+    ${translateString('التقرير الأسبوعي')}
    </h1>
 
    ${area.innerHTML}
@@ -3615,38 +3615,214 @@ function printWeeklyReport(){
    LANGUAGE
 ========================================================= */
 
-function toggleLanguage(){
+/* =========================================================
+   LANGUAGE / BILINGUAL UI
+========================================================= */
 
- currentLang =
-  currentLang==='ar'
-   ? 'en'
-   : 'ar';
+const I18N = {
+ 'نظام الحضور والاستراحات':'Attendance & Break Management System',
+ 'English':'العربية',
+ 'العربية':'English',
+ 'إضافة وإدارة الموظفين':'Add & Manage Employees',
+ 'اختر موظفاً مسجلاً...':'Select a registered employee...',
+ 'أو اكتب اسم موظف جديد':'Or enter a new employee name',
+ 'إضافة موظف':'Add Employee',
+ 'إجمالي الموظفين':'Total Employees',
+ 'متواجد حالياً':'Currently Present',
+ 'في استراحة':'On Break',
+ 'غير متواجد':'Not Present',
+ 'سجل الحضور والنشاط المباشر':'Attendance & Live Activity',
+ 'الموظف':'Employee',
+ 'الحالة':'Status',
+ 'الحضور':'Attendance',
+ 'الاستراحة':'Break',
+ 'الالتزام':'Compliance',
+ 'الإجراءات':'Actions',
+ 'التقرير الأسبوعي':'Weekly Report',
+ 'كل الموظفين':'All Employees',
+ 'إنشاء التقرير':'Generate Report',
+ 'تصدير CSV':'Export CSV',
+ 'طباعة':'Print',
+ 'سجل الإدارة':'Management Log',
+ 'التاريخ':'Date',
+ 'الإجراء':'Action',
+ 'التفاصيل':'Details',
+ 'بواسطة':'By',
+ 'سجل النشاط':'Activity Log',
+ 'المدة':'Duration',
+ 'تعديل نسبة الالتزام':'Edit Compliance',
+ 'النسبة الجديدة':'New Percentage',
+ 'سبب التعديل':'Reason for Change',
+ 'اكتب سبب تعديل النسبة...':'Enter the reason for changing the percentage...',
+ 'إلغاء':'Cancel',
+ 'حفظ التعديل':'Save Changes',
+ 'تسجيل الدخول':'Sign In',
+ 'نظام الحضور والاستراحات — Username + Password':'Attendance & Break Management System — Username + Password',
+ 'اسم المستخدم':'Username',
+ 'كلمة المرور':'Password',
+ 'دخول':'Login',
+ 'تسجيل الخروج':'Logout',
+ 'المستخدم':'User',
+ 'وضع الموظف: يمكنك تسجيل حضورك وإدارة بريكاتك ووقتها فقط.':'Employee mode: You can manage only your own attendance and breaks.',
+ 'وضع Admin: جميع صلاحيات الإدارة متاحة.':'Admin mode: All management permissions are available.',
+ 'وضع المدير: صلاحيات الإدارة والتقارير متاحة.':'Manager mode: Management and reporting permissions are available.',
+ 'admin':'Admin',
+ 'manager':'Manager',
+ 'employee':'Employee',
+ 'متواجد':'Present',
+ 'غير متواجد':'Not Present',
+ 'تدخين':'Smoking',
+ 'عشاء':'Dinner',
+ 'طارئة':'Emergency',
+ 'مصرح بها':'Authorized',
+ 'حضور':'Check In',
+ 'خروج':'Check Out',
+ 'عودة':'Return',
+ 'تعطيل':'Deactivate',
+ 'متاح':'Available',
+ 'دقيقة':'minutes',
+ 'ساعة':'hour',
+ 'ساعات':'hours',
+ 'لا توجد بيانات حضور لهذا الحساب':'No attendance data for this account',
+ 'لا توجد سجلات':'No records found',
+ 'لا توجد سجلات إدارية':'No management records found',
+ 'لا توجد بيانات.':'No data.',
+ 'عدد الموظفين':'Employees',
+ 'أيام الحضور':'Attendance Days',
+ 'وقت العمل':'Work Time',
+ 'وقت الاستراحات':'Break Time',
+ 'متوسط الالتزام':'Average Compliance',
+ 'الفترة:':'Period:',
+ 'إلى':'to',
+ 'إجمالي التجاوز:':'Total Overage:',
+ 'التجاوز':'Overage',
+ 'تعذر تحميل سجل الإدارة':'Unable to load management log',
+ 'تعذر تحميل بيانات الحضور':'Unable to load attendance data',
+ 'تعذر تحميل بيانات الاستراحات':'Unable to load break data',
+ 'الموظف موجود بالفعل':'Employee already exists',
+ 'تعذر إضافة الموظف':'Unable to add employee',
+ 'تمت إضافة الموظف':'Employee added',
+ 'تمت إضافة الموظف بنجاح':'Employee added successfully',
+ 'تعذر تعطيل الموظف':'Unable to deactivate employee',
+ 'تم تعطيل الموظف':'Employee deactivated',
+ 'تعذر حفظ نسبة الالتزام':'Unable to save compliance percentage',
+ 'تم حفظ نسبة الالتزام':'Compliance percentage saved',
+ 'تم تعديل نسبة الالتزام':'Compliance percentage updated',
+ 'تعذر تحميل البيانات':'Unable to load data',
+ 'اسم المستخدم أو كلمة المرور غير صحيحة':'Incorrect username or password',
+ 'يجب إدخال اسم المستخدم وكلمة المرور':'Please enter username and password',
+ 'المستخدم غير موجود في النظام':'User profile was not found in the system',
+ 'تعذر تحميل ملف المستخدم':'Unable to load user profile',
+ 'تعذر تسجيل الدخول':'Unable to sign in',
+ 'إضافة موظف':'Add Employee',
+ 'تعديل الالتزام':'Edit Compliance',
+ 'تعطيل موظف':'Deactivate Employee',
+ 'إضافة موظف':'Add Employee',
+ 'تعديل نسبة الالتزام':'Edit Compliance',
+ 'تدخين':'Smoking',
+ 'عشاء':'Dinner',
+ 'طارئة':'Emergency',
+ 'مصرح بها':'Authorized'
+};
 
- localStorage.setItem(
-  'attendance_language',
-  currentLang
- );
+const I18N_EN_TO_AR = Object.fromEntries(
+ Object.entries(I18N).map(([ar,en])=>[en,ar])
+);
 
- document.documentElement.lang =
-  currentLang;
+function translateString(value){
+ if(value===null || value===undefined) return value;
+ let text=String(value);
+ const dict=currentLang==='en' ? I18N : I18N_EN_TO_AR;
+ if(Object.prototype.hasOwnProperty.call(dict,text)) return dict[text];
 
- document.documentElement.dir =
-  currentLang==='ar'
-   ? 'rtl'
-   : 'ltr';
-
- document.getElementById(
-  'langBtn'
- ).innerText =
-  currentLang==='ar'
-   ? 'English'
-   : 'العربية';
-
- updateClock();
-
- renderTable();
-
+ // Common dynamic values.
+ if(currentLang==='en'){
+  text=text.replace(/(\d+)\s*دقيقة/g,'$1 minutes');
+  text=text.replace(/(\d+)\s*ساعة/g,'$1 hour');
+  text=text.replace(/(\d+)\s*ساعات/g,'$1 hours');
+  text=text.replace(/^النسبة\s+(.+)$/,'Percentage $1');
+  text=text.replace(/^تم تعديل نسبة الالتزام إلى\s+(.+)$/,'Compliance percentage changed to $1');
+  text=text.replace(/السبب:/g,'Reason:');
+ }else{
+  text=text.replace(/(\d+)\s*minutes/g,'$1 دقيقة');
+  text=text.replace(/(\d+)\s*hours/g,'$1 ساعات');
+  text=text.replace(/(\d+)\s*hour/g,'$1 ساعة');
+  text=text.replace(/^Percentage\s+(.+)$/,'النسبة $1');
+  text=text.replace(/^Compliance percentage changed to\s+(.+)$/,'تم تعديل نسبة الالتزام إلى $1');
+  text=text.replace(/Reason:/g,'السبب:');
+ }
+ return text;
 }
+
+function translateElement(root=document){
+ const walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);
+ const nodes=[];
+ let node;
+ while(node=walker.nextNode()){
+  const parent=node.parentElement;
+  if(!parent) continue;
+  const tag=parent.tagName;
+  if(tag==='SCRIPT' || tag==='STYLE' || tag==='NOSCRIPT') continue;
+  if(node.nodeValue.trim()) nodes.push(node);
+ }
+ nodes.forEach(n=>{
+  const translated=translateString(n.nodeValue);
+  if(translated!==n.nodeValue) n.nodeValue=translated;
+ });
+
+ root.querySelectorAll?.('input,textarea,select,button,[title],[aria-label]').forEach(el=>{
+  ['placeholder','title','aria-label'].forEach(attr=>{
+   if(el.hasAttribute(attr)){
+    const value=el.getAttribute(attr);
+    const translated=translateString(value);
+    if(translated!==value) el.setAttribute(attr,translated);
+   }
+  });
+ });
+}
+
+let languageObserver=null;
+function startLanguageObserver(){
+ if(languageObserver) return;
+ languageObserver=new MutationObserver(mutations=>{
+  if(currentLang!=='en' && currentLang!=='ar') return;
+  mutations.forEach(m=>{
+   if(m.type==='childList') m.addedNodes.forEach(n=>{
+    if(n.nodeType===Node.ELEMENT_NODE) translateElement(n);
+    else if(n.nodeType===Node.TEXT_NODE){
+     const translated=translateString(n.nodeValue);
+     if(translated!==n.nodeValue) n.nodeValue=translated;
+    }
+   });
+   if(m.type==='attributes') translateElement(m.target);
+   if(m.type==='characterData'){
+    const translated=translateString(m.target.nodeValue);
+    if(translated!==m.target.nodeValue) m.target.nodeValue=translated;
+   }
+  });
+ });
+ languageObserver.observe(document.body,{subtree:true,childList:true,characterData:true,attributes:true,attributeFilter:['placeholder','title','aria-label']});
+}
+
+function applyLanguage(){
+ document.documentElement.lang=currentLang;
+ document.documentElement.dir=currentLang==='ar'?'rtl':'ltr';
+ document.title=translateString('نظام الحضور والاستراحات');
+ const langBtn=document.getElementById('langBtn');
+ if(langBtn) langBtn.textContent=currentLang==='ar'?'English':'العربية';
+ translateElement(document.body);
+ updateClock();
+ if(currentUser) renderTable();
+}
+
+function toggleLanguage(){
+ currentLang=currentLang==='ar'?'en':'ar';
+ localStorage.setItem('attendance_language',currentLang);
+ applyLanguage();
+}
+
+startLanguageObserver();
+applyLanguage();
 
 
 /* =========================================================
