@@ -1,0 +1,3763 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>نظام الحضور والاستراحات</title>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<style>
+:root{
+ --bg:#0b1120;
+ --surface:#121b2e;
+ --surface2:#172338;
+ --line:#26354d;
+ --ink:#e5edf8;
+ --muted:#94a3b8;
+ --blue:#2563eb;
+ --green:#059669;
+ --orange:#d97706;
+ --red:#dc2626;
+ --purple:#7c3aed;
+}
+
+*{box-sizing:border-box}
+
+body{
+ margin:0;
+ background:
+ radial-gradient(ellipse at 15% 0%,#172746 0%,#0b1120 55%);
+ color:var(--ink);
+ font-family:Tahoma,Arial,sans-serif;
+ min-height:100vh;
+}
+
+header{
+ background:linear-gradient(120deg,#111827,#1e3150);
+ border-bottom:1px solid #30415e;
+ padding:22px 16px;
+ box-shadow:0 10px 35px #0003;
+ text-align:center;
+}
+
+header h1{
+ font-size:clamp(20px,3vw,30px);
+ margin:0 0 8px;
+}
+
+#clock{
+ color:#a9bdd9;
+ font-size:13px;
+ font-variant-numeric:tabular-nums;
+}
+
+.container{
+ max-width:1500px;
+ margin:24px auto;
+ padding:0 18px;
+}
+
+.card{
+ background:linear-gradient(145deg,#131e32,#101a2c);
+ border:1px solid #263650;
+ border-radius:16px;
+ padding:20px;
+ margin-bottom:18px;
+ box-shadow:0 12px 30px #0002;
+}
+
+h2{
+ color:#f1f5fb;
+ font-size:18px;
+ margin:0 0 16px;
+ display:flex;
+ align-items:center;
+ gap:9px;
+}
+
+h2:before{
+ content:"";
+ display:inline-block;
+ width:4px;
+ height:19px;
+ border-radius:4px;
+ background:#60a5fa;
+}
+
+.form{
+ display:grid;
+ grid-template-columns:2fr 1fr 1fr;
+ gap:10px;
+}
+
+input,button,select,textarea{
+ font:inherit;
+ padding:11px 13px;
+ border-radius:10px;
+ border:1px solid #33445f;
+ background:#0e1728;
+ color:#e5edf8;
+ outline:none;
+}
+
+textarea{
+ min-height:90px;
+ resize:vertical;
+ width:100%;
+}
+
+input:focus,
+select:focus,
+textarea:focus{
+ border-color:#60a5fa;
+ box-shadow:0 0 0 3px #3b82f622;
+}
+
+button{
+ transition:transform .15s,filter .15s;
+ box-shadow:0 3px 9px #0002;
+ border:0;
+ color:white;
+ cursor:pointer;
+ font-weight:bold;
+}
+
+button:hover:not(:disabled){
+ filter:brightness(1.12);
+ transform:translateY(-1px);
+}
+
+button:disabled{
+ opacity:.38;
+ cursor:not-allowed;
+}
+
+.btn-blue{background:#2563eb}
+.btn-green{background:#059669}
+.btn-orange{background:#d97706}
+.btn-red{background:#dc2626}
+.btn-dark{background:#334155}
+.btn-purple{background:#7c3aed}
+
+.stats{
+ display:grid;
+ grid-template-columns:repeat(4,1fr);
+ gap:12px;
+}
+
+.stat{
+ background:linear-gradient(145deg,#18263d,#142036);
+ border:1px solid #2b3d59;
+ border-radius:13px;
+ padding:17px;
+ text-align:center;
+}
+
+.stat span{
+ color:#a6b7d0;
+ font-size:13px;
+}
+
+.stat b{
+ display:block;
+ color:#f8fafc;
+ font-size:27px;
+ margin-top:8px;
+ font-variant-numeric:tabular-nums;
+}
+
+.table-wrap{
+ border:1px solid #293951;
+ border-radius:12px;
+ overflow:auto;
+}
+
+table{
+ width:100%;
+ min-width:950px;
+ border-collapse:separate;
+ border-spacing:0;
+}
+
+th,td{
+ padding:12px 10px;
+ border-bottom:1px solid #26354b;
+ color:#dce6f5;
+ text-align:center;
+}
+
+th{
+ background:#1b2a42;
+ color:#a9c5eb;
+ font-size:12px;
+ position:sticky;
+ top:0;
+ z-index:2;
+}
+
+tbody tr{background:#121d30}
+tbody tr:nth-child(even){background:#142137}
+tbody tr:hover{background:#1a2b45}
+tbody tr:last-child td{border-bottom:0}
+
+.actions{
+ display:flex;
+ flex-wrap:wrap;
+ gap:6px;
+ justify-content:center;
+}
+
+.actions button{
+ font-size:12px;
+ padding:8px 10px;
+}
+
+.timer{
+ font-variant-numeric:tabular-nums;
+ direction:ltr;
+ font-weight:bold;
+}
+
+.present{color:#34d399}
+.out{color:#fb7185}
+.break{color:#fbbf24}
+
+.status{
+ font-weight:700;
+}
+
+.badge{
+ display:inline-block;
+ padding:5px 9px;
+ border-radius:999px;
+ font-size:12px;
+ font-weight:bold;
+}
+
+.badge-green{
+ background:#052e1b;
+ color:#34d399;
+ border:1px solid #065f46;
+}
+
+.badge-red{
+ background:#450a0a;
+ color:#fca5a5;
+ border:1px solid #991b1b;
+}
+
+.badge-orange{
+ background:#422006;
+ color:#fbbf24;
+ border:1px solid #92400e;
+}
+
+.badge-blue{
+ background:#172554;
+ color:#93c5fd;
+ border:1px solid #1d4ed8;
+}
+
+.badge-purple{
+ background:#2e1065;
+ color:#c4b5fd;
+ border:1px solid #6d28d9;
+}
+
+.smoking-cooldown{
+ display:inline-block;
+ padding:5px 9px;
+ border-radius:8px;
+ background:#422006;
+ border:1px solid #92400e;
+ color:#fbbf24;
+ font-weight:bold;
+ font-variant-numeric:tabular-nums;
+ direction:ltr;
+ min-width:85px;
+}
+
+.smoking-cooldown.available{
+ background:#052e1b;
+ border-color:#10b981;
+ color:#34d399;
+}
+
+.toolbar{
+ display:flex;
+ flex-wrap:wrap;
+ gap:10px;
+ align-items:center;
+ margin-bottom:14px;
+}
+
+.toolbar input,
+.toolbar select{
+ min-width:170px;
+}
+
+.report-controls{
+ display:grid;
+ grid-template-columns:repeat(4,1fr);
+ gap:10px;
+}
+
+.report-summary{
+ display:grid;
+ grid-template-columns:repeat(5,1fr);
+ gap:10px;
+ margin-bottom:15px;
+}
+
+.summary-box{
+ background:#18263d;
+ border:1px solid #2b3d59;
+ border-radius:12px;
+ padding:14px;
+ text-align:center;
+}
+
+.summary-box small{
+ display:block;
+ color:#94a3b8;
+}
+
+.summary-box strong{
+ display:block;
+ font-size:22px;
+ margin-top:6px;
+}
+
+.progress{
+ height:9px;
+ background:#0b1220;
+ border-radius:20px;
+ overflow:hidden;
+ margin-top:7px;
+}
+
+.progress > div{
+ height:100%;
+ background:#10b981;
+ width:0%;
+ transition:width .3s;
+}
+
+.modal{
+ position:fixed;
+ inset:0;
+ background:#0009;
+ z-index:5000;
+ display:none;
+ align-items:center;
+ justify-content:center;
+ padding:20px;
+}
+
+.modal.show{
+ display:flex;
+}
+
+.modal-box{
+ width:min(650px,100%);
+ max-height:90vh;
+ overflow:auto;
+ background:#121b2e;
+ border:1px solid #33445f;
+ border-radius:18px;
+ padding:22px;
+ box-shadow:0 30px 90px #0009;
+}
+
+.modal-actions{
+ display:flex;
+ justify-content:flex-end;
+ gap:8px;
+ margin-top:15px;
+}
+
+.userbar{
+ max-width:1500px;
+ margin:12px auto 0;
+ padding:0 18px;
+}
+
+.userbar-inner{
+ background:#121b2e;
+ border:1px solid #26354d;
+ border-radius:12px;
+ padding:10px 14px;
+ display:flex;
+ justify-content:space-between;
+ align-items:center;
+ gap:10px;
+ flex-wrap:wrap;
+}
+
+#toast{
+ position:fixed;
+ left:20px;
+ bottom:20px;
+ background:#1e293b;
+ border:1px solid #475569;
+ color:white;
+ padding:12px 18px;
+ border-radius:8px;
+ display:none;
+ z-index:10000;
+ box-shadow:0 10px 30px #0005;
+ max-width:420px;
+}
+
+.login-screen{
+ position:fixed;
+ inset:0;
+ z-index:9999;
+ background:#0b1120;
+ display:flex;
+ align-items:center;
+ justify-content:center;
+ padding:20px;
+}
+
+.login-box{
+ width:min(420px,100%);
+ background:#121b2e;
+ border:1px solid #26354d;
+ border-radius:18px;
+ padding:25px;
+ box-shadow:0 20px 60px #0008;
+}
+
+.login-box input{
+ width:100%;
+ margin-bottom:10px;
+}
+
+.hidden{
+ display:none!important;
+}
+
+.muted{
+ color:#94a3b8;
+}
+
+.warning{
+ color:#fbbf24;
+}
+
+.danger{
+ color:#fb7185;
+}
+
+.success{
+ color:#34d399;
+}
+
+@media(max-width:1000px){
+ .stats{grid-template-columns:repeat(2,1fr)}
+ .report-summary{grid-template-columns:repeat(2,1fr)}
+ .report-controls{grid-template-columns:1fr 1fr}
+}
+
+@media(max-width:800px){
+ .form{grid-template-columns:1fr}
+ .report-controls{grid-template-columns:1fr}
+ .report-summary{grid-template-columns:1fr 1fr}
+}
+</style>
+</head>
+
+<body>
+
+<header>
+ <h1>نظام الحضور والاستراحات</h1>
+ <div id="clock"></div>
+
+ <div style="margin-top:10px">
+  <button class="btn-blue" id="langBtn" onclick="toggleLanguage()">
+   English
+  </button>
+ </div>
+</header>
+
+<div id="userBar"></div>
+
+<div class="container">
+
+ <!-- إدارة الموظفين -->
+ <div class="card management-section">
+  <h2>إضافة وإدارة الموظفين</h2>
+
+  <div class="form">
+
+   <select id="presetEmployee" onchange="selectPreset(this.value)">
+    <option value="">اختر موظفاً مسجلاً...</option>
+   </select>
+
+   <input
+    id="employeeName"
+    placeholder="أو اكتب اسم موظف جديد"
+   >
+
+   <button
+    class="btn-blue management-only"
+    onclick="addEmployee()"
+   >
+    إضافة موظف
+   </button>
+
+  </div>
+ </div>
+
+ <!-- الإحصائيات -->
+ <div class="stats card employee-hidden">
+
+  <div class="stat">
+   <span>إجمالي الموظفين</span>
+   <b id="totalEmp">0</b>
+  </div>
+
+  <div class="stat">
+   <span class="present">متواجد حالياً</span>
+   <b id="activeEmp" class="present">0</b>
+  </div>
+
+  <div class="stat">
+   <span class="break">في استراحة</span>
+   <b id="breakEmp" class="break">0</b>
+  </div>
+
+  <div class="stat">
+   <span class="out">غير متواجد</span>
+   <b id="outEmp" class="out">0</b>
+  </div>
+
+ </div>
+
+ <!-- الحضور المباشر -->
+ <div class="card">
+
+  <h2>سجل الحضور والنشاط المباشر</h2>
+
+  <div class="table-wrap">
+   <table>
+    <thead>
+     <tr>
+      <th>الموظف</th>
+      <th>الحالة</th>
+      <th>الحضور</th>
+      <th>الاستراحة</th>
+      <th>Cooldown</th>
+      <th>الالتزام</th>
+      <th>الإجراءات</th>
+     </tr>
+    </thead>
+
+    <tbody id="employeeTableBody"></tbody>
+   </table>
+  </div>
+
+ </div>
+
+ <!-- التقارير -->
+ <div class="card management-section">
+
+  <h2>التقرير الأسبوعي</h2>
+
+  <div class="report-controls">
+
+   <input
+    type="date"
+    id="reportFrom"
+   >
+
+   <input
+    type="date"
+    id="reportTo"
+   >
+
+   <select id="reportEmployee">
+    <option value="">كل الموظفين</option>
+   </select>
+
+   <button
+    class="btn-blue"
+    onclick="generateWeeklyReport()"
+   >
+    إنشاء التقرير
+   </button>
+
+  </div>
+
+  <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+
+   <button
+    class="btn-green"
+    onclick="setCurrentWeek()"
+   >
+    هذا الأسبوع
+   </button>
+
+   <button
+    class="btn-dark"
+    onclick="exportWeeklyCSV()"
+   >
+    تصدير CSV
+   </button>
+
+   <button
+    class="btn-purple"
+    onclick="printWeeklyReport()"
+   >
+    طباعة / PDF
+   </button>
+
+  </div>
+
+  <div id="reportArea" style="margin-top:18px"></div>
+
+ </div>
+
+ <!-- سجل الإدارة -->
+ <div class="card management-section">
+
+  <h2>سجل الإدارة</h2>
+
+  <div class="toolbar">
+
+   <select id="managementEmployeeFilter">
+    <option value="">كل الموظفين</option>
+   </select>
+
+   <button
+    class="btn-blue"
+    onclick="loadManagementLogs()"
+   >
+    تحديث السجل
+   </button>
+
+  </div>
+
+  <div class="table-wrap">
+
+   <table>
+    <thead>
+     <tr>
+      <th>التاريخ</th>
+      <th>الإجراء</th>
+      <th>الموظف</th>
+      <th>التفاصيل</th>
+      <th>بواسطة</th>
+     </tr>
+    </thead>
+
+    <tbody id="managementLogsBody"></tbody>
+   </table>
+
+  </div>
+
+ </div>
+
+ <!-- سجل النشاط -->
+ <div class="card employee-hidden">
+
+  <h2>سجل النشاط</h2>
+
+  <div class="table-wrap">
+
+   <table>
+    <thead>
+     <tr>
+      <th>التاريخ</th>
+      <th>الموظف</th>
+      <th>الإجراء</th>
+      <th>المدة</th>
+      <th>التفاصيل</th>
+     </tr>
+    </thead>
+
+    <tbody id="activityLogsBody"></tbody>
+   </table>
+
+  </div>
+
+ </div>
+
+</div>
+
+<div id="toast"></div>
+
+<!-- نافذة تعديل الالتزام -->
+<div id="complianceModal" class="modal">
+
+ <div class="modal-box">
+
+  <h2>تعديل نسبة الالتزام</h2>
+
+  <p class="muted" id="complianceEmployeeName"></p>
+
+  <label>
+   النسبة الجديدة
+  </label>
+
+  <input
+   id="complianceValue"
+   type="number"
+   min="0"
+   max="100"
+   step="1"
+   style="width:100%;margin-top:7px"
+  >
+
+  <label style="display:block;margin-top:12px">
+   سبب التعديل
+  </label>
+
+  <textarea
+   id="complianceNote"
+   placeholder="اكتب سبب تعديل النسبة..."
+   style="margin-top:7px"
+  ></textarea>
+
+  <div class="modal-actions">
+
+   <button
+    class="btn-dark"
+    onclick="closeComplianceModal()"
+   >
+    إلغاء
+   </button>
+
+   <button
+    class="btn-green"
+    onclick="saveCompliance()"
+   >
+    حفظ التعديل
+   </button>
+
+  </div>
+
+ </div>
+</div>
+
+<!-- شاشة الدخول -->
+<div id="loginScreen" class="login-screen">
+
+ <div class="login-box">
+
+  <h2>تسجيل الدخول</h2>
+
+  <p class="muted">
+   نظام الحضور والاستراحات — Username + Password
+  </p>
+
+  <input
+   id="loginUsername"
+   type="text"
+   placeholder="اسم المستخدم"
+   autocomplete="username"
+  >
+
+  <input
+   id="loginPassword"
+   type="password"
+   placeholder="كلمة المرور"
+   autocomplete="current-password"
+  >
+
+  <button
+   class="btn-blue"
+   onclick="login()"
+   style="width:100%"
+  >
+   دخول
+  </button>
+
+  <div
+   id="loginError"
+   class="danger"
+   style="margin-top:12px"
+  ></div>
+
+ </div>
+</div>
+
+<script>
+/* =========================================================
+   SUPABASE
+========================================================= */
+
+const SUPABASE_URL =
+ 'https://vcmrygueuiwyaymqsmxz.supabase.co';
+
+const SUPABASE_PUBLISHABLE_KEY =
+ 'sb_publishable_rMZf6WBtlscrTXTVe9cdtw_fN3bGy5I';
+
+const supabaseClient =
+ window.supabase.createClient(
+  SUPABASE_URL,
+  SUPABASE_PUBLISHABLE_KEY
+ );
+
+
+/* =========================================================
+   STATE
+========================================================= */
+
+let currentUser = null;
+let currentProfile = null;
+
+let employeesList = [];
+let attendanceList = [];
+let breaksList = [];
+
+let weeklyReportRows = [];
+
+let currentLang =
+ localStorage.getItem('attendance_language') || 'ar';
+
+
+/* =========================================================
+   RULES
+========================================================= */
+
+const BREAK_RULES = {
+
+ smoking:{
+  name:'تدخين',
+  minutes:5
+ },
+
+ dinner:{
+  name:'عشاء',
+  minutes:20
+ },
+
+ emergency:{
+  name:'طارئة',
+  minutes:10
+ }
+
+};
+
+
+/* =========================================================
+   BASIC HELPERS
+========================================================= */
+
+function today(){
+
+ return new Date()
+  .toISOString()
+  .slice(0,10);
+
+}
+
+
+function esc(value){
+
+ return String(value ?? '')
+  .replace(/[&<>"']/g,char=>({
+   '&':'&amp;',
+   '<':'&lt;',
+   '>':'&gt;',
+   '"':'&quot;',
+   "'":'&#039;'
+  }[char]));
+
+}
+
+
+function formatDate(value){
+
+ if(!value)
+  return '—';
+
+ return new Date(value)
+  .toLocaleString(
+   currentLang === 'ar'
+    ? 'ar-IQ'
+    : 'en-US',
+   {
+    year:'numeric',
+    month:'2-digit',
+    day:'2-digit',
+    hour:'2-digit',
+    minute:'2-digit',
+    second:'2-digit'
+   }
+  );
+
+}
+
+
+function formatTime(value){
+
+ if(!value)
+  return '—';
+
+ return new Date(value)
+  .toLocaleTimeString(
+   currentLang === 'ar'
+    ? 'ar-IQ'
+    : 'en-US',
+   {
+    hour:'2-digit',
+    minute:'2-digit',
+    second:'2-digit'
+   }
+  );
+
+}
+
+
+function minutesBetween(start,end){
+
+ if(!start || !end)
+  return 0;
+
+ return Math.max(
+  0,
+  Math.floor(
+   (new Date(end)-new Date(start))/60000
+  )
+ );
+
+}
+
+
+function isAdmin(){
+
+ return currentProfile?.role === 'admin';
+
+}
+
+
+function isManagement(){
+
+ return (
+  currentProfile?.role === 'admin' ||
+  currentProfile?.role === 'manager'
+ );
+
+}
+
+
+function showToast(message){
+
+ const toast =
+  document.getElementById('toast');
+
+ toast.innerText = message;
+ toast.style.display = 'block';
+
+ clearTimeout(window.toastTimer);
+
+ window.toastTimer =
+  setTimeout(()=>{
+   toast.style.display='none';
+  },3500);
+
+}
+
+
+/* =========================================================
+   CLOCK
+========================================================= */
+
+function updateClock(){
+
+ const clock =
+  document.getElementById('clock');
+
+ if(!clock)
+  return;
+
+ clock.innerText =
+  new Date().toLocaleString(
+   currentLang === 'ar'
+    ? 'ar-IQ'
+    : 'en-US'
+  );
+
+}
+
+setInterval(updateClock,1000);
+updateClock();
+
+
+/* =========================================================
+   AUTH
+========================================================= */
+
+async function login(){
+
+ const username =
+  document.getElementById('loginUsername')
+   .value.trim().toLowerCase();
+
+ const password =
+  document.getElementById('loginPassword')
+   .value;
+
+ const errorBox =
+  document.getElementById('loginError');
+
+ errorBox.innerText='';
+
+ if(!username || !password){
+
+  errorBox.innerText =
+   'أدخل اسم المستخدم وكلمة المرور';
+
+  return;
+
+ }
+
+ // البريد الداخلي مخفي عن المستخدم؛ الدخول يكون بالـUsername فقط.
+ const internalEmails = {
+  ahmed: 'ahmed@attendance.local',
+  ali: 'ali@attendance.local',
+  mohammedr: 'mohammedr@attendance.local',
+  mohammedi: 'mohammedi@attendance.local',
+  admin: 'qabasimad0@gmail.com'
+ };
+
+ const email = internalEmails[username];
+
+ if(!email){
+  errorBox.innerText = 'اسم المستخدم غير موجود';
+  return;
+ }
+
+ const {
+  data,
+  error
+ } =
+ await supabaseClient.auth
+  .signInWithPassword({
+   email,
+   password
+  });
+
+ if(error){
+
+  console.error(error);
+
+  errorBox.innerText =
+   'اسم المستخدم أو كلمة المرور غير صحيحة';
+
+  return;
+
+ }
+
+ currentUser=data.user;
+
+ await initializeApplication();
+
+}
+
+
+async function logout(){
+
+ await supabaseClient.auth.signOut();
+
+ location.reload();
+
+}
+
+
+/* =========================================================
+   PROFILE
+========================================================= */
+
+async function loadProfile(){
+
+ const {
+  data,
+  error
+ } =
+ await supabaseClient
+  .from('profiles')
+  .select('*')
+  .eq('id',currentUser.id)
+  .maybeSingle();
+
+ if(error){
+
+  console.error(error);
+
+  throw new Error(
+   'تعذر قراءة صلاحيات المستخدم'
+  );
+
+ }
+
+ if(!data){
+
+  throw new Error(
+   'لا يوجد Profile لهذا الحساب'
+  );
+
+ }
+
+ currentProfile=data;
+
+}
+
+
+/* =========================================================
+   INITIALIZE
+========================================================= */
+
+async function initializeApplication(){
+
+ try{
+
+  await loadProfile();
+
+  document
+   .getElementById('loginScreen')
+   .remove();
+
+  renderUserBar();
+
+  applyPermissions();
+
+  await loadAllData();
+
+  if(isManagement()){
+   setCurrentWeek();
+   await generateWeeklyReport();
+   await loadManagementLogs();
+  }
+
+ }catch(error){
+
+  console.error(error);
+
+  alert(error.message);
+
+  await supabaseClient.auth.signOut();
+
+  location.reload();
+
+ }
+
+}
+
+
+/* =========================================================
+   USER BAR
+========================================================= */
+
+function renderUserBar(){
+
+ const bar =
+  document.getElementById('userBar');
+
+ bar.className='userbar';
+
+ bar.innerHTML=`
+  <div class="userbar-inner">
+
+   <div>
+    المستخدم:
+    <b>${esc(currentProfile.username || currentProfile.full_name)}</b>
+
+    <span class="badge badge-blue">
+     ${esc(currentProfile.role)}
+    </span>
+   </div>
+
+   <button
+    class="btn-red"
+    onclick="logout()"
+   >
+    تسجيل الخروج
+   </button>
+
+  </div>
+
+   <div id="roleNote" class="muted" style="margin-top:6px"></div>
+ `;
+
+}
+
+
+/* =========================================================
+   PERMISSIONS
+========================================================= */
+
+function applyPermissions(){
+
+ const management = isManagement();
+ const employee = currentProfile?.role === 'employee';
+ const admin = isAdmin();
+
+ document
+  .querySelectorAll('.management-only, .management-section')
+  .forEach(el=>{
+   el.style.display = management ? '' : 'none';
+  });
+
+ document
+  .querySelectorAll('.employee-hidden')
+  .forEach(el=>{
+   el.style.display = employee ? 'none' : '';
+  });
+
+ document
+  .querySelectorAll('.admin-only')
+  .forEach(el=>{
+   el.style.display = admin ? '' : 'none';
+  });
+
+ const roleNote = document.getElementById('roleNote');
+ if(roleNote){
+  roleNote.innerText = employee
+   ? 'وضع الموظف: يمكنك تسجيل حضورك وإدارة بريكاتك ووقتها فقط.'
+   : admin
+    ? 'وضع Admin: جميع صلاحيات الإدارة متاحة.'
+    : 'وضع المدير: صلاحيات الإدارة والتقارير متاحة.';
+ }
+
+}
+
+
+
+/* =========================================================
+   LOAD ALL
+========================================================= */
+
+async function loadAllData(){
+
+ await Promise.all([
+  loadEmployees(),
+  loadTodayAttendance(),
+  loadTodayBreaks()
+ ]);
+
+ populateEmployeeSelects();
+ renderTable();
+ updateStats();
+
+}
+
+
+/* =========================================================
+   EMPLOYEES
+========================================================= */
+
+async function loadEmployees(){
+
+ const {
+  data,
+  error
+ } =
+ await supabaseClient
+  .from('employees')
+  .select('*')
+  .eq('active',true)
+  .order('name');
+
+ if(error){
+
+  console.error(error);
+
+  showToast(
+   'تعذر تحميل الموظفين'
+  );
+
+  return;
+
+ }
+
+ employeesList=data||[];
+
+}
+
+
+function populateEmployeeSelects(){
+
+ const preset =
+  document.getElementById(
+   'presetEmployee'
+  );
+
+ const report =
+  document.getElementById(
+   'reportEmployee'
+  );
+
+ const management =
+  document.getElementById(
+   'managementEmployeeFilter'
+  );
+
+ preset.innerHTML =
+  '<option value="">اختر موظفاً مسجلاً...</option>';
+
+ report.innerHTML =
+  '<option value="">كل الموظفين</option>';
+
+ management.innerHTML =
+  '<option value="">كل الموظفين</option>';
+
+ employeesList.forEach(emp=>{
+
+  const o1=document.createElement('option');
+  o1.value=emp.name;
+  o1.textContent=emp.name;
+  preset.appendChild(o1);
+
+  const o2=document.createElement('option');
+  o2.value=emp.id;
+  o2.textContent=emp.name;
+  report.appendChild(o2);
+
+  const o3=document.createElement('option');
+  o3.value=emp.id;
+  o3.textContent=emp.name;
+  management.appendChild(o3);
+
+ });
+
+}
+
+
+function selectPreset(value){
+
+ if(!value)
+  return;
+
+ document.getElementById(
+  'employeeName'
+ ).value=value;
+
+}
+
+
+/* =========================================================
+   ADD EMPLOYEE
+========================================================= */
+
+async function addEmployee(){
+
+ if(!isManagement()){
+
+  showToast(
+   'ليس لديك صلاحية إضافة موظف'
+  );
+
+  return;
+
+ }
+
+ const input =
+  document.getElementById(
+   'employeeName'
+  );
+
+ const name=input.value.trim();
+
+ if(!name){
+
+  showToast(
+   'اكتب اسم الموظف'
+  );
+
+  return;
+
+ }
+
+ const exists =
+  employeesList.some(
+   e =>
+    e.name.trim().toLowerCase() ===
+    name.toLowerCase()
+  );
+
+ if(exists){
+
+  showToast(
+   'الموظف موجود بالفعل'
+  );
+
+  return;
+
+ }
+
+ const {
+  data,
+  error
+ } =
+ await supabaseClient
+  .from('employees')
+  .insert({
+   name:name
+  })
+  .select()
+  .single();
+
+ if(error){
+
+  console.error(error);
+
+  showToast(
+   'تعذر إضافة الموظف'
+  );
+
+  return;
+
+ }
+
+ await writeManagementLog(
+  'إضافة موظف',
+  data.id,
+  data.name,
+  'تمت إضافة الموظف'
+ );
+
+ await writeActivity(
+  data.id,
+  data.name,
+  'إضافة موظف',
+  null,
+  'تمت إضافة الموظف'
+ );
+
+ input.value='';
+
+ await loadAllData();
+
+ showToast(
+  'تمت إضافة الموظف بنجاح'
+ );
+
+}
+
+
+/* =========================================================
+   ATTENDANCE
+========================================================= */
+
+async function loadTodayAttendance(){
+
+ const {
+  data,
+  error
+ } =
+ await supabaseClient
+  .from('attendance')
+  .select('*')
+  .eq(
+   'attendance_date',
+   today()
+  );
+
+ if(error){
+
+  console.error(error);
+
+  return;
+
+ }
+
+ attendanceList=data||[];
+
+}
+
+
+function getAttendance(employeeId){
+
+ return attendanceList.find(
+  a =>
+   Number(a.employee_id) ===
+   Number(employeeId)
+ );
+
+}
+
+
+/* =========================================================
+   BREAKS
+========================================================= */
+
+async function loadTodayBreaks(){
+
+ const start =
+  today()+'T00:00:00';
+
+ const {
+  data,
+  error
+ } =
+ await supabaseClient
+  .from('breaks')
+  .select('*')
+  .gte(
+   'start_time',
+   start
+  )
+  .order(
+   'start_time',
+   {ascending:false}
+  );
+
+ if(error){
+
+  console.error(error);
+
+  return;
+
+ }
+
+ breaksList=data||[];
+
+}
+
+
+function getActiveBreak(employeeId){
+
+ return breaksList.find(
+  b =>
+   Number(b.employee_id) ===
+   Number(employeeId) &&
+   !b.end_time
+ );
+
+}
+
+
+/* =========================================================
+   CHECK IN
+========================================================= */
+
+async function checkIn(employeeId){
+
+ if(currentProfile?.role === 'employee' && Number(employeeId) !== Number(currentProfile.employee_id)){
+  showToast('لا يمكنك تنفيذ إجراء على موظف آخر');
+  return;
+ }
+
+
+ const employee =
+  employeesList.find(
+   e=>Number(e.id)===Number(employeeId)
+  );
+
+ if(!employee)
+  return;
+
+ const existing =
+  getAttendance(employeeId);
+
+ if(existing?.present){
+
+  showToast(
+   'الموظف مسجل حضور بالفعل'
+  );
+
+  return;
+
+ }
+
+ const now =
+  new Date().toISOString();
+
+ let result;
+
+ if(existing){
+
+  result =
+   await supabaseClient
+    .from('attendance')
+    .update({
+     present:true,
+     check_in:now,
+     check_out:null
+    })
+    .eq(
+     'id',
+     existing.id
+    );
+
+ }else{
+
+  result =
+   await supabaseClient
+    .from('attendance')
+    .insert({
+     employee_id:employeeId,
+     attendance_date:today(),
+     present:true,
+     check_in:now
+    });
+
+ }
+
+ if(result.error){
+
+  console.error(result.error);
+
+  showToast(
+   'تعذر تسجيل الحضور'
+  );
+
+  return;
+
+ }
+
+ await writeActivity(
+  employeeId,
+  employee.name,
+  'تسجيل حضور',
+  null,
+  'تم تسجيل الحضور'
+ );
+
+ await loadAllData();
+
+ showToast(
+  'تم تسجيل الحضور'
+ );
+
+}
+
+
+/* =========================================================
+   CHECK OUT
+========================================================= */
+
+async function checkOut(employeeId){
+
+ if(currentProfile?.role === 'employee' && Number(employeeId) !== Number(currentProfile.employee_id)){
+  showToast('لا يمكنك تنفيذ إجراء على موظف آخر');
+  return;
+ }
+
+
+ const employee =
+  employeesList.find(
+   e=>Number(e.id)===Number(employeeId)
+  );
+
+ const attendance =
+  getAttendance(employeeId);
+
+ if(!employee || !attendance)
+  return;
+
+ const active =
+  getActiveBreak(employeeId);
+
+ if(active){
+
+  showToast(
+   'يجب إنهاء الاستراحة أولاً'
+  );
+
+  return;
+
+ }
+
+ const now =
+  new Date().toISOString();
+
+ const {
+  error
+ } =
+ await supabaseClient
+  .from('attendance')
+  .update({
+   present:false,
+   check_out:now
+  })
+  .eq(
+   'id',
+   attendance.id
+  );
+
+ if(error){
+
+  console.error(error);
+
+  showToast(
+   'تعذر تسجيل الخروج'
+  );
+
+  return;
+
+ }
+
+ const duration =
+  minutesBetween(
+   attendance.check_in,
+   now
+  );
+
+ await writeActivity(
+  employeeId,
+  employee.name,
+  'تسجيل خروج',
+  duration+' دقيقة',
+  'تم تسجيل الخروج'
+ );
+
+ await loadAllData();
+
+ showToast(
+  'تم تسجيل الخروج'
+ );
+
+}
+
+
+/* =========================================================
+   START BREAK
+========================================================= */
+
+async function startBreak(
+ employeeId,
+ breakType
+){
+
+ if(currentProfile?.role === 'employee' && Number(employeeId) !== Number(currentProfile.employee_id)){
+  showToast('لا يمكنك تنفيذ إجراء على موظف آخر');
+  return;
+ }
+
+
+ const employee =
+  employeesList.find(
+   e=>Number(e.id)===Number(employeeId)
+  );
+
+ if(!employee)
+  return;
+
+ const attendance =
+  getAttendance(employeeId);
+
+ if(!attendance?.present){
+
+  showToast(
+   'يجب تسجيل الحضور أولاً'
+  );
+
+  return;
+
+ }
+
+ if(getActiveBreak(employeeId)){
+
+  showToast(
+   'لدى الموظف استراحة نشطة بالفعل'
+  );
+
+  return;
+
+ }
+
+ const previous =
+  breaksList.filter(
+   b =>
+    Number(b.employee_id) ===
+    Number(employeeId)
+  );
+
+ if(
+  breakType!=='authorized' &&
+  previous.some(
+   b=>b.break_type===breakType
+  )
+ ){
+
+  showToast(
+   'تم استخدام هذه الاستراحة اليوم'
+  );
+
+  return;
+
+ }
+
+ if(breakType==='smoking'){
+
+  const cooldown =
+   getSmokingCooldown(employeeId);
+
+  if(cooldown!==null && cooldown>0){
+
+   showToast(
+    `تبقى ${cooldown} دقيقة قبل استراحة التدخين التالية`
+   );
+
+   return;
+
+  }
+
+ }
+
+ let allowedMinutes=0;
+
+ if(breakType==='authorized'){
+
+  if(!isManagement()){
+
+   showToast(
+    'ليس لديك صلاحية الاستراحة المصرح بها'
+   );
+
+   return;
+
+  }
+
+  const value =
+   prompt(
+    'أدخل مدة الاستراحة بالدقائق من 1 إلى 180:',
+    '30'
+   );
+
+  if(value===null)
+   return;
+
+  allowedMinutes=Number(value);
+
+  if(
+   !Number.isFinite(allowedMinutes) ||
+   allowedMinutes<1 ||
+   allowedMinutes>180
+  ){
+
+   showToast(
+    'المدة يجب أن تكون بين 1 و180 دقيقة'
+   );
+
+   return;
+
+  }
+
+ }else{
+
+  allowedMinutes =
+   BREAK_RULES[breakType].minutes;
+
+ }
+
+ const now =
+  new Date().toISOString();
+
+ const {
+  data,
+  error
+ } =
+ await supabaseClient
+  .from('breaks')
+  .insert({
+   employee_id:employeeId,
+   break_type:breakType,
+   start_time:now,
+   allowed_minutes:allowedMinutes,
+   authorized_by:
+    breakType==='authorized'
+     ? currentUser.id
+     : null
+  })
+  .select()
+  .single();
+
+ if(error){
+
+  console.error(error);
+
+  showToast(
+   'تعذر بدء الاستراحة'
+  );
+
+  return;
+
+ }
+
+ await writeActivity(
+  employeeId,
+  employee.name,
+  'بدء استراحة',
+  allowedMinutes+' دقيقة',
+  breakType==='authorized'
+   ? 'استراحة مصرح بها'
+   : BREAK_RULES[breakType].name
+ );
+
+ await loadAllData();
+
+ showToast(
+  'تم بدء الاستراحة'
+ );
+
+}
+
+
+/* =========================================================
+   FINISH BREAK
+========================================================= */
+
+async function finishBreak(breakId){
+
+ const active =
+  breaksList.find(
+   b=>Number(b.id)===Number(breakId)
+  );
+
+ if(!active)
+  return;
+
+ if(currentProfile?.role === 'employee' && Number(active.employee_id) !== Number(currentProfile.employee_id)){
+  showToast('لا يمكنك إنهاء استراحة موظف آخر');
+  return;
+ }
+
+ const employee =
+  employeesList.find(
+   e=>Number(e.id)===Number(active.employee_id)
+  );
+
+ const now =
+  new Date().toISOString();
+
+ const actual =
+  minutesBetween(
+   active.start_time,
+   now
+  );
+
+ const overage =
+  Math.max(
+   0,
+   actual -
+   Number(active.allowed_minutes||0)
+  );
+
+ const {
+  error
+ } =
+ await supabaseClient
+  .from('breaks')
+  .update({
+   end_time:now,
+   actual_minutes:actual,
+   overage_minutes:overage
+  })
+  .eq(
+   'id',
+   breakId
+  );
+
+ if(error){
+
+  console.error(error);
+
+  showToast(
+   'تعذر إنهاء الاستراحة'
+  );
+
+  return;
+
+ }
+
+ await writeActivity(
+  active.employee_id,
+  employee?.name||'',
+  'إنهاء استراحة',
+  actual+' دقيقة',
+  overage>0
+   ? `تجاوز ${overage} دقيقة`
+   : 'ضمن الوقت المحدد'
+ );
+
+ await loadAllData();
+
+ showToast(
+  overage>0
+   ? `انتهت الاستراحة — تجاوز ${overage} دقيقة`
+   : 'تم إنهاء الاستراحة'
+ );
+
+}
+
+
+/* =========================================================
+   SMOKING COOLDOWN
+========================================================= */
+
+function getSmokingCooldown(employeeId){
+
+ const smoking =
+  breaksList
+   .filter(
+    b =>
+     Number(b.employee_id)===Number(employeeId) &&
+     b.break_type==='smoking' &&
+     b.end_time
+   )
+   .sort(
+    (a,b)=>
+     new Date(b.end_time)-
+     new Date(a.end_time)
+   )[0];
+
+ if(!smoking)
+  return null;
+
+ const elapsed =
+  minutesBetween(
+   smoking.end_time,
+   new Date()
+  );
+
+ return Math.max(
+  0,
+  60-elapsed
+ );
+
+}
+
+
+/* =========================================================
+   COMPLIANCE
+========================================================= */
+
+function complianceScore(employee){
+
+ if(
+  employee.compliance_override !== null &&
+  employee.compliance_override !== undefined &&
+  Number.isFinite(
+   Number(employee.compliance_override)
+  )
+ ){
+
+  return Math.max(
+   0,
+   Math.min(
+    100,
+    Math.round(
+     Number(employee.compliance_override)
+    )
+   )
+  );
+
+ }
+
+ const totalOverage =
+  breaksList
+   .filter(
+    b =>
+     Number(b.employee_id)===
+     Number(employee.id)
+   )
+   .reduce(
+    (sum,b)=>
+     sum+Number(b.overage_minutes||0),
+    0
+   );
+
+ return Math.max(
+  0,
+  Math.round(100-totalOverage)
+ );
+
+}
+
+
+function openComplianceModal(employeeId){
+
+ if(!isAdmin()){
+
+  showToast(
+   'تعديل نسبة الالتزام متاح للـ Admin فقط'
+  );
+
+  return;
+
+ }
+
+ const employee =
+  employeesList.find(
+   e=>Number(e.id)===Number(employeeId)
+  );
+
+ if(!employee)
+  return;
+
+ document.getElementById(
+  'complianceEmployeeName'
+ ).innerText =
+  employee.name;
+
+ document.getElementById(
+  'complianceValue'
+ ).value =
+  complianceScore(employee);
+
+ document.getElementById(
+  'complianceNote'
+ ).value =
+  employee.compliance_override_note||'';
+
+ document.getElementById(
+  'complianceModal'
+ ).dataset.employeeId =
+  employeeId;
+
+ document.getElementById(
+  'complianceModal'
+ ).classList.add('show');
+
+}
+
+
+function closeComplianceModal(){
+
+ document.getElementById(
+  'complianceModal'
+ ).classList.remove('show');
+
+}
+
+
+async function saveCompliance(){
+
+ if(!isAdmin()){
+
+  showToast(
+   'هذه العملية للـ Admin فقط'
+  );
+
+  return;
+
+ }
+
+ const modal =
+  document.getElementById(
+   'complianceModal'
+  );
+
+ const employeeId =
+  modal.dataset.employeeId;
+
+ const employee =
+  employeesList.find(
+   e=>Number(e.id)===Number(employeeId)
+  );
+
+ if(!employee)
+  return;
+
+ const value =
+  Number(
+   document.getElementById(
+    'complianceValue'
+   ).value
+  );
+
+ const note =
+  document.getElementById(
+   'complianceNote'
+  ).value.trim();
+
+ if(
+  !Number.isFinite(value) ||
+  value<0 ||
+  value>100
+ ){
+
+  showToast(
+   'النسبة يجب أن تكون بين 0 و100'
+  );
+
+  return;
+
+ }
+
+ if(!note){
+
+  showToast(
+   'يجب كتابة سبب تعديل النسبة'
+  );
+
+  return;
+
+ }
+
+ const {
+  error
+ } =
+ await supabaseClient
+  .from('employees')
+  .update({
+   compliance_override:
+    Math.round(value),
+
+   compliance_override_note:
+    note,
+
+   compliance_override_at:
+    new Date().toISOString(),
+
+   compliance_override_by:
+    currentUser.id
+  })
+  .eq(
+   'id',
+   employeeId
+  );
+
+ if(error){
+
+  console.error(error);
+
+  showToast(
+   'تعذر حفظ نسبة الالتزام'
+  );
+
+  return;
+
+ }
+
+ await writeManagementLog(
+  'تعديل نسبة الالتزام',
+  employeeId,
+  employee.name,
+  `تم تعديل نسبة الالتزام إلى ${Math.round(value)}%. السبب: ${note}`
+ );
+
+ await writeActivity(
+  employeeId,
+  employee.name,
+  'تعديل الالتزام',
+  null,
+  `النسبة ${Math.round(value)}%. ${note}`
+ );
+
+ closeComplianceModal();
+
+ await loadAllData();
+
+ showToast(
+  'تم حفظ نسبة الالتزام'
+ );
+
+}
+
+
+/* =========================================================
+   RENDER TABLE
+========================================================= */
+
+function renderTable(){
+
+ const tbody =
+  document.getElementById(
+   'employeeTableBody'
+  );
+
+ if(!employeesList.length){
+
+  tbody.innerHTML=`
+   <tr>
+    <td colspan="7">
+     لا توجد بيانات حضور لهذا الحساب
+    </td>
+   </tr>
+  `;
+
+  return;
+
+ }
+
+ tbody.innerHTML =
+ employeesList.map(employee=>{
+
+  const attendance =
+   getAttendance(employee.id);
+
+  const activeBreak =
+   getActiveBreak(employee.id);
+
+  const cooldown =
+   getSmokingCooldown(employee.id);
+
+  const compliance =
+   complianceScore(employee);
+
+  let status='';
+
+  if(activeBreak){
+
+   status=`
+    <span class="break">
+     في استراحة
+    </span>
+   `;
+
+  }else if(attendance?.present){
+
+   status=`
+    <span class="present">
+     متواجد
+    </span>
+   `;
+
+  }else{
+
+   status=`
+    <span class="out">
+     غير متواجد
+    </span>
+   `;
+
+  }
+
+  let breakTimer='—';
+
+  if(activeBreak){
+
+   breakTimer=`
+    <span
+     class="timer"
+     id="breakTimer_${activeBreak.id}"
+    >
+     00:00
+    </span>
+   `;
+
+  }
+
+  let cooldownHtml='متاح';
+
+  if(
+   cooldown!==null &&
+   cooldown>0
+  ){
+
+   cooldownHtml=`
+    <span class="smoking-cooldown">
+     ${cooldown} دقيقة
+    </span>
+   `;
+
+  }else{
+
+   cooldownHtml=`
+    <span class="smoking-cooldown available">
+     متاح
+    </span>
+   `;
+
+  }
+
+  let actions='';
+
+  if(!attendance?.present){
+
+   actions+=`
+    <button
+     class="btn-green"
+     onclick="checkIn(${employee.id})"
+    >
+     حضور
+    </button>
+   `;
+
+  }else if(!activeBreak){
+
+   actions+=`
+    <button
+     class="btn-orange"
+     onclick="startBreak(${employee.id},'smoking')"
+    >
+     تدخين
+    </button>
+
+    <button
+     class="btn-blue"
+     onclick="startBreak(${employee.id},'dinner')"
+    >
+     عشاء
+    </button>
+
+    <button
+     class="btn-red"
+     onclick="startBreak(${employee.id},'emergency')"
+    >
+     طارئة
+    </button>
+   `;
+
+   if(isManagement()){
+
+    actions+=`
+     <button
+      class="btn-dark"
+      onclick="startBreak(${employee.id},'authorized')"
+     >
+      مصرح بها
+     </button>
+    `;
+
+   }
+
+   actions+=`
+    <button
+     class="btn-red"
+     onclick="checkOut(${employee.id})"
+    >
+     خروج
+    </button>
+   `;
+
+  }else{
+
+   actions+=`
+    <button
+     class="btn-green"
+     onclick="finishBreak(${activeBreak.id})"
+    >
+     عودة
+    </button>
+   `;
+
+  }
+
+  if(isManagement()){
+
+   actions+=`
+    <button
+     class="btn-red"
+     onclick="deactivateEmployee(${employee.id})"
+    >
+     تعطيل
+    </button>
+   `;
+
+  }
+
+  if(isAdmin()){
+
+   actions+=`
+    <button
+     class="btn-purple"
+     onclick="openComplianceModal(${employee.id})"
+    >
+     الالتزام
+    </button>
+   `;
+
+  }
+
+  return `
+   <tr>
+
+    <td>
+     <b>${esc(employee.name)}</b>
+    </td>
+
+    <td class="status">
+     ${status}
+    </td>
+
+    <td>
+     ${
+      attendance?.check_in
+       ? formatTime(attendance.check_in)
+       : '—'
+     }
+    </td>
+
+    <td>
+     ${breakTimer}
+    </td>
+
+    <td>
+     ${cooldownHtml}
+    </td>
+
+    <td>
+
+     <b class="${
+      compliance>=90
+       ? 'success'
+       : compliance>=70
+        ? 'warning'
+        : 'danger'
+     }">
+      ${compliance}%
+     </b>
+
+     <div class="progress">
+      <div style="width:${compliance}%"></div>
+     </div>
+
+    </td>
+
+    <td>
+     <div class="actions">
+      ${actions}
+     </div>
+    </td>
+
+   </tr>
+  `;
+
+ }).join('');
+
+}
+
+
+/* =========================================================
+   DEACTIVATE
+========================================================= */
+
+async function deactivateEmployee(employeeId){
+
+ if(!isManagement())
+  return;
+
+ const employee =
+  employeesList.find(
+   e=>Number(e.id)===Number(employeeId)
+  );
+
+ if(!employee)
+  return;
+
+ if(
+  !confirm(
+   `هل تريد تعطيل الموظف ${employee.name}؟`
+  )
+ )
+  return;
+
+ const {
+  error
+ } =
+ await supabaseClient
+  .from('employees')
+  .update({
+   active:false
+  })
+  .eq(
+   'id',
+   employeeId
+  );
+
+ if(error){
+
+  console.error(error);
+
+  showToast(
+   'تعذر تعطيل الموظف'
+  );
+
+  return;
+
+ }
+
+ await writeManagementLog(
+  'تعطيل موظف',
+  employeeId,
+  employee.name,
+  'تم تعطيل الموظف'
+ );
+
+ await writeActivity(
+  employeeId,
+  employee.name,
+  'تعطيل موظف',
+  null,
+  'تم تعطيل الموظف'
+ );
+
+ await loadAllData();
+
+ showToast(
+  'تم تعطيل الموظف'
+ );
+
+}
+
+
+/* =========================================================
+   STATS
+========================================================= */
+
+function updateStats(){
+
+ const total =
+  employeesList.length;
+
+ const active =
+  employeesList.filter(employee=>{
+
+   const a =
+    getAttendance(employee.id);
+
+   const b =
+    getActiveBreak(employee.id);
+
+   return a?.present && !b;
+
+  }).length;
+
+ const breaks =
+  employeesList.filter(
+   e=>getActiveBreak(e.id)
+  ).length;
+
+ const out =
+  Math.max(
+   0,
+   total-active-breaks
+  );
+
+ document.getElementById(
+  'totalEmp'
+ ).innerText=total;
+
+ document.getElementById(
+  'activeEmp'
+ ).innerText=active;
+
+ document.getElementById(
+  'breakEmp'
+ ).innerText=breaks;
+
+ document.getElementById(
+  'outEmp'
+ ).innerText=out;
+
+}
+
+
+/* =========================================================
+   TIMERS
+========================================================= */
+
+function updateTimers(){
+
+ breaksList
+  .filter(b=>!b.end_time)
+  .forEach(activeBreak=>{
+
+   const element =
+    document.getElementById(
+     'breakTimer_'+activeBreak.id
+    );
+
+   if(!element)
+    return;
+
+   const seconds =
+    Math.floor(
+     (
+      Date.now() -
+      new Date(
+       activeBreak.start_time
+      ).getTime()
+     )/1000
+    );
+
+   const min =
+    Math.floor(seconds/60);
+
+   const sec =
+    seconds%60;
+
+   element.innerText =
+    String(min).padStart(2,'0')+
+    ':'+
+    String(sec).padStart(2,'0');
+
+  });
+
+}
+
+
+/* =========================================================
+   ACTIVITY LOG
+========================================================= */
+
+async function writeActivity(
+ employeeId,
+ employeeName,
+ action,
+ duration,
+ details
+){
+
+ const {
+  error
+ } =
+ await supabaseClient
+  .from('activity_logs')
+  .insert({
+   employee_id:employeeId,
+   employee_name:employeeName,
+   action:action,
+   duration:duration,
+   details:details,
+   performed_by:
+    currentUser?.id||null
+  });
+
+ if(error)
+  console.error(
+   'Activity log error:',
+   error
+  );
+
+}
+
+
+async function loadActivityLogs(){
+
+ const {
+  data,
+  error
+ } =
+ await supabaseClient
+  .from('activity_logs')
+  .select('*')
+  .order(
+   'created_at',
+   {ascending:false}
+  )
+  .limit(100);
+
+ if(error){
+
+  console.error(error);
+
+  return;
+
+ }
+
+ const tbody =
+  document.getElementById(
+   'activityLogsBody'
+  );
+
+ if(!data?.length){
+
+  tbody.innerHTML=`
+   <tr>
+    <td colspan="5">
+     لا توجد سجلات
+    </td>
+   </tr>
+  `;
+
+  return;
+
+ }
+
+ tbody.innerHTML =
+  data.map(row=>`
+   <tr>
+    <td>${formatDate(row.created_at)}</td>
+    <td>${esc(row.employee_name||'—')}</td>
+    <td>${esc(row.action||'—')}</td>
+    <td>${esc(row.duration||'—')}</td>
+    <td>${esc(row.details||'—')}</td>
+   </tr>
+  `).join('');
+
+}
+
+
+/* =========================================================
+   MANAGEMENT LOGS
+========================================================= */
+
+async function writeManagementLog(
+ action,
+ employeeId,
+ employeeName,
+ details
+){
+
+ if(!isManagement())
+  return;
+
+ const {
+  error
+ } =
+ await supabaseClient
+  .from('management_logs')
+  .insert({
+   action:action,
+   employee_id:employeeId||null,
+   target_name:employeeName||null,
+   details:details,
+   performed_by:
+    currentUser?.id||null
+  });
+
+ if(error)
+  console.error(
+   'Management log error:',
+   error
+  );
+
+}
+
+
+async function loadManagementLogs(){
+
+ if(!isManagement())
+  return;
+
+ const employeeId =
+  document.getElementById(
+   'managementEmployeeFilter'
+  ).value;
+
+ let query =
+  supabaseClient
+   .from('management_logs')
+   .select('*')
+   .order(
+    'created_at',
+    {ascending:false}
+   )
+   .limit(200);
+
+ if(employeeId){
+
+  query =
+   query.eq(
+    'employee_id',
+    employeeId
+   );
+
+ }
+
+ const {
+  data,
+  error
+ } =
+ await query;
+
+ if(error){
+
+  console.error(error);
+
+  showToast(
+   'تعذر تحميل سجل الإدارة'
+  );
+
+  return;
+
+ }
+
+ const tbody =
+  document.getElementById(
+   'managementLogsBody'
+  );
+
+ if(!data?.length){
+
+  tbody.innerHTML=`
+   <tr>
+    <td colspan="5">
+     لا توجد سجلات إدارية
+    </td>
+   </tr>
+  `;
+
+  return;
+
+ }
+
+ tbody.innerHTML =
+  data.map(row=>`
+
+   <tr>
+
+    <td>
+     ${formatDate(row.created_at)}
+    </td>
+
+    <td>
+     ${esc(row.action||'—')}
+    </td>
+
+    <td>
+     ${esc(row.target_name||'—')}
+    </td>
+
+    <td>
+     ${esc(row.details||'—')}
+    </td>
+
+    <td>
+     ${esc(row.performed_by||'—')}
+    </td>
+
+   </tr>
+
+  `).join('');
+
+}
+
+
+/* =========================================================
+   WEEKLY REPORT
+========================================================= */
+
+function getDateOnly(date){
+
+ return new Date(date)
+  .toISOString()
+  .slice(0,10);
+
+}
+
+
+function setCurrentWeek(){
+
+ const d =
+  new Date();
+
+ const day =
+  d.getDay();
+
+ const diff =
+  day===0 ? -6 : 1-day;
+
+ const monday =
+  new Date(d);
+
+ monday.setDate(
+  d.getDate()+diff
+ );
+
+ const sunday =
+  new Date(monday);
+
+ sunday.setDate(
+  monday.getDate()+6
+ );
+
+ document.getElementById(
+  'reportFrom'
+ ).value =
+  getDateOnly(monday);
+
+ document.getElementById(
+  'reportTo'
+ ).value =
+  getDateOnly(sunday);
+
+}
+
+
+async function generateWeeklyReport(){
+
+ const from =
+  document.getElementById(
+   'reportFrom'
+  ).value;
+
+ const to =
+  document.getElementById(
+   'reportTo'
+  ).value;
+
+ const employeeFilter =
+  document.getElementById(
+   'reportEmployee'
+  ).value;
+
+ if(!from || !to){
+
+  showToast(
+   'حدد تاريخ البداية والنهاية'
+  );
+
+  return;
+
+ }
+
+ if(from>to){
+
+  showToast(
+   'تاريخ البداية يجب أن يكون قبل النهاية'
+  );
+
+  return;
+
+ }
+
+ let employees =
+  employeesList.slice();
+
+ if(employeeFilter){
+
+  employees =
+   employees.filter(
+    e=>String(e.id)===String(employeeFilter)
+   );
+
+ }
+
+ if(!employees.length){
+
+  document.getElementById(
+   'reportArea'
+  ).innerHTML=
+   '<p class="muted">لا توجد بيانات.</p>';
+
+  return;
+
+ }
+
+ const startISO =
+  from+'T00:00:00';
+
+ const endDate =
+  new Date(to+'T23:59:59');
+
+ const endISO =
+  endDate.toISOString();
+
+ const {
+  data:attendance,
+  error:attendanceError
+ } =
+ await supabaseClient
+  .from('attendance')
+  .select('*')
+  .gte(
+   'attendance_date',
+   from
+  )
+  .lte(
+   'attendance_date',
+   to
+  );
+
+ if(attendanceError){
+
+  console.error(attendanceError);
+
+  showToast(
+   'تعذر تحميل بيانات الحضور'
+  );
+
+  return;
+
+ }
+
+ const {
+  data:breaks,
+  error:breakError
+ } =
+ await supabaseClient
+  .from('breaks')
+  .select('*')
+  .gte(
+   'start_time',
+   startISO
+  )
+  .lte(
+   'start_time',
+   endISO
+  );
+
+ if(breakError){
+
+  console.error(breakError);
+
+  showToast(
+   'تعذر تحميل بيانات الاستراحات'
+  );
+
+  return;
+
+ }
+
+ weeklyReportRows =
+  employees.map(employee=>{
+
+   const empAttendance =
+    (attendance||[]).filter(
+     a =>
+      Number(a.employee_id)===
+      Number(employee.id)
+    );
+
+   const empBreaks =
+    (breaks||[]).filter(
+     b =>
+      Number(b.employee_id)===
+      Number(employee.id)
+    );
+
+   const presentDays =
+    empAttendance.filter(
+     a=>a.check_in
+    ).length;
+
+   const totalWorkMinutes =
+    empAttendance.reduce(
+     (sum,a)=>
+      sum+
+      minutesBetween(
+       a.check_in,
+       a.check_out
+      ),
+     0
+    );
+
+   const breakMinutes =
+    empBreaks.reduce(
+     (sum,b)=>
+      sum+
+      Number(b.actual_minutes||0),
+     0
+    );
+
+   const overageMinutes =
+    empBreaks.reduce(
+     (sum,b)=>
+      sum+
+      Number(b.overage_minutes||0),
+     0
+    );
+
+   const score =
+    employee.compliance_override !== null &&
+    employee.compliance_override !== undefined
+     ? Number(employee.compliance_override)
+     : Math.max(
+        0,
+        Math.round(
+         100-overageMinutes
+        )
+       );
+
+   return {
+    id:employee.id,
+    name:employee.name,
+    presentDays:presentDays,
+    workMinutes:totalWorkMinutes,
+    breakMinutes:breakMinutes,
+    overageMinutes:overageMinutes,
+    compliance:Math.max(
+     0,
+     Math.min(
+      100,
+      Math.round(score)
+     )
+    )
+   };
+
+  });
+
+ renderWeeklyReport(
+  from,
+  to
+ );
+
+}
+
+
+function minutesToText(minutes){
+
+ const m =
+  Number(minutes||0);
+
+ const h =
+  Math.floor(m/60);
+
+ const min =
+  m%60;
+
+ if(h>0)
+  return `${h} ساعة ${min} دقيقة`;
+
+ return `${min} دقيقة`;
+
+}
+
+
+function renderWeeklyReport(from,to){
+
+ const area =
+  document.getElementById(
+   'reportArea'
+  );
+
+ if(!weeklyReportRows.length){
+
+  area.innerHTML=
+   '<p class="muted">لا توجد بيانات.</p>';
+
+  return;
+
+ }
+
+ const totalPresent =
+  weeklyReportRows.reduce(
+   (s,r)=>s+r.presentDays,
+   0
+  );
+
+ const totalWork =
+  weeklyReportRows.reduce(
+   (s,r)=>s+r.workMinutes,
+   0
+  );
+
+ const totalBreak =
+  weeklyReportRows.reduce(
+   (s,r)=>s+r.breakMinutes,
+   0
+  );
+
+ const totalOverage =
+  weeklyReportRows.reduce(
+   (s,r)=>s+r.overageMinutes,
+   0
+  );
+
+ const averageCompliance =
+  Math.round(
+   weeklyReportRows.reduce(
+    (s,r)=>s+r.compliance,
+    0
+   )/
+   weeklyReportRows.length
+  );
+
+ area.innerHTML=`
+
+  <div class="report-summary">
+
+   <div class="summary-box">
+    <small>عدد الموظفين</small>
+    <strong>
+     ${weeklyReportRows.length}
+    </strong>
+   </div>
+
+   <div class="summary-box">
+    <small>أيام الحضور</small>
+    <strong>
+     ${totalPresent}
+    </strong>
+   </div>
+
+   <div class="summary-box">
+    <small>وقت العمل</small>
+    <strong>
+     ${minutesToText(totalWork)}
+    </strong>
+   </div>
+
+   <div class="summary-box">
+    <small>وقت الاستراحات</small>
+    <strong>
+     ${minutesToText(totalBreak)}
+    </strong>
+   </div>
+
+   <div class="summary-box">
+    <small>متوسط الالتزام</small>
+    <strong class="success">
+     ${averageCompliance}%
+    </strong>
+   </div>
+
+  </div>
+
+  <div style="margin-bottom:12px">
+   الفترة:
+   <b>${esc(from)}</b>
+   إلى
+   <b>${esc(to)}</b>
+   —
+   إجمالي التجاوز:
+   <b class="danger">
+    ${totalOverage} دقيقة
+   </b>
+  </div>
+
+  <div class="table-wrap">
+
+   <table id="weeklyReportTable">
+
+    <thead>
+     <tr>
+      <th>الموظف</th>
+      <th>أيام الحضور</th>
+      <th>وقت العمل</th>
+      <th>الاستراحات</th>
+      <th>التجاوز</th>
+      <th>الالتزام</th>
+     </tr>
+    </thead>
+
+    <tbody>
+
+     ${weeklyReportRows.map(row=>`
+
+      <tr>
+
+       <td>
+        <b>${esc(row.name)}</b>
+       </td>
+
+       <td>
+        ${row.presentDays}
+       </td>
+
+       <td>
+        ${minutesToText(row.workMinutes)}
+       </td>
+
+       <td>
+        ${minutesToText(row.breakMinutes)}
+       </td>
+
+       <td class="${
+        row.overageMinutes>0
+         ? 'danger'
+         : 'success'
+       }">
+        ${row.overageMinutes} دقيقة
+       </td>
+
+       <td>
+
+        <b class="${
+         row.compliance>=90
+          ? 'success'
+          : row.compliance>=70
+           ? 'warning'
+           : 'danger'
+        }">
+         ${row.compliance}%
+        </b>
+
+        <div class="progress">
+         <div
+          style="width:${row.compliance}%"
+         ></div>
+        </div>
+
+       </td>
+
+      </tr>
+
+     `).join('')}
+
+    </tbody>
+
+   </table>
+
+  </div>
+
+ `;
+
+}
+
+
+/* =========================================================
+   CSV EXPORT
+========================================================= */
+
+function csvEscape(value){
+
+ const text =
+  String(value??'');
+
+ if(
+  text.includes(',') ||
+  text.includes('"') ||
+  text.includes('\n')
+ ){
+
+  return '"' +
+   text.replace(/"/g,'""') +
+   '"';
+
+ }
+
+ return text;
+
+}
+
+
+function exportWeeklyCSV(){
+
+ if(!weeklyReportRows.length){
+
+  showToast(
+   'أنشئ التقرير أولاً'
+  );
+
+  return;
+
+ }
+
+ const rows=[
+  [
+   'الموظف',
+   'أيام الحضور',
+   'وقت العمل',
+   'الاستراحات',
+   'التجاوز بالدقائق',
+   'الالتزام'
+  ]
+ ];
+
+ weeklyReportRows.forEach(row=>{
+
+  rows.push([
+   row.name,
+   row.presentDays,
+   minutesToText(row.workMinutes),
+   minutesToText(row.breakMinutes),
+   row.overageMinutes,
+   row.compliance+'%'
+  ]);
+
+ });
+
+ const csv =
+  '\uFEFF'+
+  rows
+   .map(
+    row=>row
+     .map(csvEscape)
+     .join(',')
+   )
+   .join('\n');
+
+ const blob =
+  new Blob(
+   [csv],
+   {
+    type:'text/csv;charset=utf-8;'
+   }
+  );
+
+ const url =
+  URL.createObjectURL(blob);
+
+ const a =
+  document.createElement('a');
+
+ a.href=url;
+
+ a.download =
+  'weekly_attendance_report_' +
+  today() +
+  '.csv';
+
+ a.click();
+
+ URL.revokeObjectURL(url);
+
+ showToast(
+  'تم تصدير التقرير'
+ );
+
+}
+
+
+/* =========================================================
+   PRINT / PDF
+========================================================= */
+
+function printWeeklyReport(){
+
+ const area =
+  document.getElementById(
+   'reportArea'
+  );
+
+ if(!area.innerHTML.trim()){
+
+  showToast(
+   'أنشئ التقرير أولاً'
+  );
+
+  return;
+
+ }
+
+ const win =
+  window.open(
+   '',
+   '_blank'
+  );
+
+ if(!win){
+
+  showToast(
+   'المتصفح منع نافذة الطباعة'
+  );
+
+  return;
+
+ }
+
+ win.document.write(`
+
+  <!DOCTYPE html>
+
+  <html lang="ar" dir="rtl">
+
+  <head>
+
+   <meta charset="UTF-8">
+
+   <title>التقرير الأسبوعي</title>
+
+   <style>
+
+    body{
+     font-family:Tahoma,Arial;
+     padding:25px;
+     direction:rtl;
+    }
+
+    h1{
+     text-align:center;
+    }
+
+    table{
+     width:100%;
+     border-collapse:collapse;
+     margin-top:20px;
+    }
+
+    th,td{
+     border:1px solid #999;
+     padding:8px;
+     text-align:center;
+    }
+
+    th{
+     background:#eee;
+    }
+
+    .summary{
+     display:flex;
+     gap:10px;
+     flex-wrap:wrap;
+    }
+
+    .box{
+     border:1px solid #aaa;
+     padding:10px;
+     flex:1;
+     min-width:120px;
+     text-align:center;
+    }
+
+    .progress{
+     display:none;
+    }
+
+    @media print{
+     button{
+      display:none;
+     }
+    }
+
+   </style>
+
+  </head>
+
+  <body>
+
+   <h1>
+    التقرير الأسبوعي
+   </h1>
+
+   ${area.innerHTML}
+
+   <script>
+    window.onload=function(){
+     window.print();
+    };
+   <\/script>
+
+  </body>
+
+  </html>
+
+ `);
+
+ win.document.close();
+
+}
+
+
+/* =========================================================
+   LANGUAGE
+========================================================= */
+
+function toggleLanguage(){
+
+ currentLang =
+  currentLang==='ar'
+   ? 'en'
+   : 'ar';
+
+ localStorage.setItem(
+  'attendance_language',
+  currentLang
+ );
+
+ document.documentElement.lang =
+  currentLang;
+
+ document.documentElement.dir =
+  currentLang==='ar'
+   ? 'rtl'
+   : 'ltr';
+
+ document.getElementById(
+  'langBtn'
+ ).innerText =
+  currentLang==='ar'
+   ? 'English'
+   : 'العربية';
+
+ updateClock();
+
+ renderTable();
+
+}
+
+
+/* =========================================================
+   AUTH SESSION
+========================================================= */
+
+async function checkSession(){
+
+ const {
+  data,
+  error
+ } =
+ await supabaseClient.auth
+  .getSession();
+
+ if(error){
+
+  console.error(error);
+
+  return;
+
+ }
+
+ if(data.session){
+
+  currentUser =
+   data.session.user;
+
+  await initializeApplication();
+
+ }
+
+}
+
+
+supabaseClient.auth
+ .onAuthStateChange(
+  (event,session)=>{
+
+   if(event==='SIGNED_OUT'){
+
+    location.reload();
+
+   }
+
+  }
+ );
+
+
+/* =========================================================
+   AUTO REFRESH
+========================================================= */
+
+setInterval(
+ async ()=>{
+
+  if(!currentUser)
+   return;
+
+  await loadAllData();
+
+ },
+ 30000
+);
+
+
+setInterval(
+ ()=>{
+
+  if(!currentUser)
+   return;
+
+  updateTimers();
+
+ },
+ 1000
+);
+
+
+/* =========================================================
+   ENTER KEY LOGIN
+========================================================= */
+
+document
+ .getElementById('loginUsername')
+ .addEventListener(
+  'keydown',
+  event=>{
+   if(event.key==='Enter')
+    document.getElementById('loginPassword').focus();
+  }
+ );
+
+document
+ .getElementById('loginPassword')
+ .addEventListener(
+  'keydown',
+  event=>{
+   if(event.key==='Enter')
+    login();
+  }
+ );
+
+
+/* =========================================================
+   START
+========================================================= */
+
+checkSession();
+
+</script>
+
+</body>
+</html>
