@@ -2254,98 +2254,6 @@ async function saveCompliance(){
 
 
 /* =========================================================
-   CHANGE EMPLOYEE PASSWORD
-========================================================= */
-
-async function changeEmployeePassword(employeeId){
-
- if(!isManagement()){
-
-  showToast(
-   'ليس لديك صلاحية تغيير كلمة المرور'
-  );
-
-  return;
-
- }
-
- const employee =
-  employeesList.find(
-   e=>Number(e.id)===Number(employeeId)
-  );
-
- if(!employee)
-  return;
-
- const password =
-  prompt(
-   `أدخل كلمة المرور الجديدة للموظف:\n${employee.name}`
-  );
-
- if(password===null)
-  return;
-
- if(password.length<6){
-
-  showToast(
-   'كلمة المرور يجب أن تكون 6 أحرف أو أكثر'
-  );
-
-  return;
-
- }
-
- try{
-
-  const {
-   data,
-   error
-  } =
-  await supabaseClient.functions.invoke(
-   'change-employee-password',
-   {
-    body:{
-     employee_id:employeeId,
-     password:password
-    }
-   }
-  );
-
-  if(error)
-   throw new Error(error.message);
-
-  if(data?.error)
-   throw new Error(data.error);
-
-  await writeManagementLog(
-   'تغيير كلمة المرور',
-   employeeId,
-   employee.name,
-   'تم تغيير كلمة مرور الموظف'
-  );
-
-  showToast(
-   '✅ تم تغيير كلمة المرور بنجاح'
-  );
-
- }catch(error){
-
-  console.error(error);
-
-  showToast(
-   '❌ '+
-   (
-    error.message ||
-    'تعذر تغيير كلمة المرور'
-   )
-  );
-
- }
-
-}
-
-
-/* =========================================================
    RENDER TABLE
 ========================================================= */
 
@@ -2524,17 +2432,9 @@ function renderTable(){
 
   }
 
-  /* إضافة زر تغيير الباسورد فقط */
   if(isManagement()){
 
    actions+=`
-    <button
-     class="btn-purple"
-     onclick="changeEmployeePassword(${employee.id})"
-    >
-     🔑 الباسورد
-    </button>
-
     <button
      class="btn-red"
      onclick="deactivateEmployee(${employee.id})"
