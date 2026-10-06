@@ -514,6 +514,7 @@ tbody tr:last-child td{border-bottom:0}
  <!-- إدارة حساب الموظف -->
  <div class="card management-section">
   <h2>حسابات الموظفين</h2>
+    <button class="btn-orange" onclick="resetAllBreaks()">♻️ تصفير استراحات الجميع</button>
   <div class="form" style="grid-template-columns:1fr 1fr 1fr 1fr">
    <input id="newEmployeeName" placeholder="اسم الموظف">
    <input id="newEmployeeUsername" placeholder="اسم المستخدم">
@@ -2394,6 +2395,12 @@ function renderTable(){
     >
      تعطيل
     </button>
+    <button
+     class="btn-orange"
+     onclick="resetEmployeeBreaks(${employee.id})"
+    >
+     تصفير الاستراحات
+    </button>
    `;
 
   }
@@ -2533,6 +2540,59 @@ async function deactivateEmployee(employeeId,softOnly=true){
 }
 
 
+
+/* =========================================================
+   RESET BREAKS
+========================================================= */
+
+function getTodayRange(){
+ const now=new Date();
+ const start=new Date(now.getFullYear(),now.getMonth(),now.getDate(),0,0,0,0);
+ const end=new Date(now.getFullYear(),now.getMonth(),now.getDate()+1,0,0,0,0);
+ return {start:start.toISOString(),end:end.toISOString()};
+}
+
+async function resetEmployeeBreaks(employeeId){
+ if(!isManagement()) return showToast('ليس لديك صلاحية تصفير الاستراحات');
+ const employee=allEmployeesList.find(e=>Number(e.id)===Number(employeeId));
+ if(!employee) return;
+ const active=getActiveBreak(employeeId);
+ if(active){
+  return showToast('يجب إنهاء الاستراحة الحالية أولاً');
+ }
+ if(!confirm(`هل تريد تصفير جميع استراحات ${employee.name} لهذا اليوم؟`)) return;
+ const {start,end}=getTodayRange();
+ const {error}=await supabaseClient.from('breaks').delete()
+  .eq('employee_id',employeeId)
+  .gte('start_time',start)
+  .lt('start_time',end);
+ if(error){
+  console.error(error);
+  return showToast('تعذر تصفير الاستراحات');
+ }
+ breaksList=breaksList.filter(b=>!(Number(b.employee_id)===Number(employeeId) && new Date(b.start_time)>=new Date(start) && new Date(b.start_time)<new Date(end)));
+ renderTable(); updateStats();
+ writeManagementLog('تصفير الاستراحات',employeeId,employee.name,'تم تصفير جميع استراحات الموظف لهذا اليوم').catch(()=>{});
+ writeActivity(employeeId,employee.name,'تصفير الاستراحات',null,'تم تصفير جميع استراحات الموظف لهذا اليوم').catch(()=>{});
+ showToast('تم تصفير استراحات الموظف');
+}
+
+async function resetAllBreaks(){
+ if(!isManagement()) return showToast('ليس لديك صلاحية تصفير الاستراحات');
+ if(!confirm('هل تريد تصفير جميع استراحات جميع الموظفين لهذا اليوم؟')) return;
+ const {start,end}=getTodayRange();
+ const {error}=await supabaseClient.from('breaks').delete()
+  .gte('start_time',start)
+  .lt('start_time',end);
+ if(error){
+  console.error(error);
+  return showToast('تعذر تصفير الاستراحات');
+ }
+ breaksList=breaksList.filter(b=>!(new Date(b.start_time)>=new Date(start) && new Date(b.start_time)<new Date(end)));
+ renderTable(); updateStats();
+ writeManagementLog('تصفير استراحات الجميع',null,'جميع الموظفين','تم تصفير جميع استراحات اليوم').catch(()=>{});
+ showToast('تم تصفير استراحات جميع الموظفين');
+}
 
 /* =========================================================
    STATS
