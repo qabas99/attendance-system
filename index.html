@@ -511,6 +511,31 @@ tbody tr:last-child td{border-bottom:0}
   </div>
  </div>
 
+ <!-- إدارة حساب الموظف -->
+ <div class="card management-section">
+  <h2>حسابات الموظفين</h2>
+  <div class="form" style="grid-template-columns:1fr 1fr 1fr 1fr">
+   <input id="newEmployeeName" placeholder="اسم الموظف">
+   <input id="newEmployeeUsername" placeholder="اسم المستخدم">
+   <input id="newEmployeePassword" type="password" placeholder="كلمة المرور">
+   <button class="btn-purple management-only" onclick="createEmployeeAccount()">إنشاء حساب موظف</button>
+  </div>
+  <div class="muted" style="margin-top:8px">يمكنك إنشاء حساب للموظف مباشرة من هنا، بدون إدخال بريد إلكتروني.</div>
+ </div>
+
+ <!-- إدارة حسابات الموظفين -->
+ <div class="card management-section" id="accountManagementCard">
+  <h2>إدارة حسابات الموظفين</h2>
+  <div class="muted" style="margin-bottom:10px">يمكنك تغيير كلمة المرور أو الصلاحية أو تعطيل الحساب أو حذفه. هذه العمليات الإدارية تتطلب إعداد Edge Function الآمن في Supabase.</div>
+  <button class="btn-blue management-only" onclick="loadAccountProfiles()">تحديث قائمة الحسابات</button>
+  <div style="overflow-x:auto;margin-top:12px">
+   <table>
+    <thead><tr><th>اسم الموظف</th><th>اسم المستخدم</th><th>الصلاحية</th><th>الإجراءات</th></tr></thead>
+    <tbody id="accountProfilesBody"><tr><td colspan="4">اضغط «تحديث قائمة الحسابات» لعرض الحسابات.</td></tr></tbody>
+   </table>
+  </div>
+ </div>
+
  <!-- الإحصائيات -->
  <div class="stats card employee-hidden">
 
@@ -801,6 +826,19 @@ const supabaseClient =
   SUPABASE_PUBLISHABLE_KEY
  );
 
+const supabaseAuthClient =
+ window.supabase.createClient(
+  SUPABASE_URL,
+  SUPABASE_PUBLISHABLE_KEY,
+  {
+   auth:{
+    persistSession:false,
+    autoRefreshToken:false,
+    detectSessionInUrl:false
+   }
+  }
+ );
+
 
 /* =========================================================
    STATE
@@ -950,7 +988,7 @@ function showToast(message){
  const toast =
   document.getElementById('toast');
 
- toast.innerText = message;
+ toast.innerText = t(message);
  toast.style.display = 'block';
 
  clearTimeout(window.toastTimer);
@@ -1016,7 +1054,7 @@ async function login(){
 
  }
 
- // البريد الداخلي مخفي عن المستخدم؛ الدخول يكون بالـUsername فقط.
+ // الحسابات القديمة تبقى كما هي، والحسابات الجديدة تستخدم بريداً داخلياً تلقائياً.
  const internalEmails = {
   ahmed: 'ahmed@attendance.local',
   ali: 'ali@attendance.local',
@@ -1025,12 +1063,9 @@ async function login(){
   admin: 'qabasimad0@gmail.com'
  };
 
- const email = internalEmails[username];
-
- if(!email){
-  errorBox.innerText = 'اسم المستخدم غير موجود';
-  return;
- }
+ const email =
+  internalEmails[username] ||
+  `${username}@attendance.local`;
 
  const {
   data,
@@ -1123,6 +1158,7 @@ async function initializeApplication(){
    .remove();
 
   renderUserBar();
+  applyLanguage();
 
   applyPermissions();
 
@@ -1164,7 +1200,7 @@ function renderUserBar(){
   <div class="userbar-inner">
 
    <div>
-    المستخدم:
+    ${t('المستخدم:')}
     <b>${esc(currentProfile.username || currentProfile.full_name)}</b>
 
     <span class="badge badge-blue">
@@ -1176,7 +1212,7 @@ function renderUserBar(){
     class="btn-red"
     onclick="logout()"
    >
-    تسجيل الخروج
+    ${t('تسجيل الخروج')}
    </button>
 
   </div>
@@ -1437,6 +1473,212 @@ async function addEmployee(){
   'تمت إضافة الموظف بنجاح'
  );
 
+}
+
+
+/* =========================================================
+   EMPLOYEE ACCOUNT CREATION
+========================================================= */
+
+/* =========================================================
+   ACCOUNT MANAGEMENT (requires secure Supabase Edge Function)
+========================================================= */
+async function loadAccountProfiles(){
+ if(!isAdmin()){
+  showToast('إدارة الحسابات متاحة للمسؤول فقط');
+  return;
+ }
+ const body=document.getElementById('accountProfilesBody');
+ body.innerHTML='<tr><td colspan="4">جارٍ تحميل الحسابات...</td></tr>';
+ const {data,error}=await supabaseClient
+  .from('profiles')
+  .select('id,username,full_name,role,employee_id')
+  .order('full_name',{ascending:true});
+ if(error){
+  body.innerHTML='<tr><td colspan="4">تعذر تحميل الحسابات. تحقق من صلاحيات جدول profiles.</td></tr>';
+  showToast('تعذر تحميل الحسابات');
+  return;
+ }
+ body.innerHTML='';
+ (data||[]).forEach(profile=>{
+  const tr=document.createElement('tr');
+  const name=document.createElement('td'); name.textContent=profile.full_name||'—';
+  const username=document.createElement('td'); username.textContent=profile.username||'—';
+  const role=document.createElement('td'); role.textContent=profile.role||'employee';
+  const actions=document.createElement('td');
+  const wrap=document.createElement('div'); wrap.style.cssText='display:flex;gap:6px;flex-wrap:wrap';
+  const addBtn=(label,action,cls='btn-blue')=>{
+   const b=document.createElement('button'); b.className=cls; b.textContent=label;
+   b.onclick=()=>manageEmployeeAccount(action,profile); wrap.appendChild(b);
+  };
+  if(profile.id===currentUser?.id){
+   const own=document.createElement('span'); own.textContent='حسابك الحالي'; wrap.appendChild(own);
+  }else{
+   addBtn('تغيير كلمة المرور','change_password','btn-purple');
+   addBtn('تغيير الصلاحية','change_role','btn-blue');
+   addBtn('تعطيل / تفعيل','toggle_active','btn-orange');
+   addBtn('حذف الحساب','delete','btn-red');
+  }
+  actions.appendChild(wrap); tr.append(name,username,role,actions); body.appendChild(tr);
+ });
+ if(!data?.length) body.innerHTML='<tr><td colspan="4">لا توجد حسابات.</td></tr>';
+}
+
+async function manageEmployeeAccount(action,profile){
+ if(!isAdmin()){
+  showToast('إدارة الحسابات متاحة للمسؤول فقط'); return;
+ }
+ let payload={action,user_id:profile.id};
+ if(action==='change_password'){
+  const password=prompt('أدخل كلمة المرور الجديدة (6 أحرف على الأقل):');
+  if(password===null)return;
+  if(password.length<6){showToast('كلمة المرور يجب أن تكون 6 أحرف على الأقل');return;}
+  payload.password=password;
+ }else if(action==='change_role'){
+  const role=prompt('اكتب الصلاحية: employee أو manager أو admin',profile.role||'employee');
+  if(role===null)return;
+  if(!['employee','manager','admin'].includes(role.trim())){showToast('الصلاحية غير صحيحة');return;}
+  payload.role=role.trim();
+ }else if(action==='toggle_active'){
+  const disable=confirm('موافق = تعطيل الحساب. إلغاء = تفعيل الحساب. هل تريد المتابعة؟');
+  payload.active=!disable;
+ }else if(action==='delete'){
+  if(!confirm('سيتم حذف حساب الموظف نهائياً. هل أنت متأكد؟'))return;
+  payload.confirm_delete=true;
+ }
+ const {data,error}=await supabaseClient.functions.invoke('manage-employee-account',{body:payload});
+ if(error||data?.error){
+  console.error('manage-employee-account error',error||data?.error);
+  showToast('لم تنجح العملية. تأكد من نشر Edge Function باسم manage-employee-account في Supabase.');
+  return;
+ }
+ showToast(data?.message||'تم تنفيذ العملية');
+ await loadAccountProfiles();
+ await loadAllData();
+}
+
+async function createEmployeeAccount(){
+
+ if(!isManagement()){
+  showToast('ليس لديك صلاحية إنشاء حساب موظف');
+  return;
+ }
+
+ const name =
+  document.getElementById('newEmployeeName').value.trim();
+
+ const username =
+  document.getElementById('newEmployeeUsername').value.trim().toLowerCase();
+
+ const password =
+  document.getElementById('newEmployeePassword').value;
+
+ if(!name || !username || !password){
+  showToast('أدخل اسم الموظف واسم المستخدم وكلمة المرور');
+  return;
+ }
+
+ if(!/^[a-z0-9._-]{3,30}$/.test(username)){
+  showToast('اسم المستخدم يجب أن يكون بالإنجليزية 3 أحرف على الأقل');
+  return;
+ }
+
+ if(password.length < 6){
+  showToast('كلمة المرور يجب أن تكون 6 أحرف على الأقل');
+  return;
+ }
+
+ if(employeesList.some(
+  e => e.name.trim().toLowerCase() === name.toLowerCase()
+  )){
+  showToast('الموظف موجود بالفعل');
+  return;
+ }
+
+ const {data:existingProfile} =
+  await supabaseClient
+   .from('profiles')
+   .select('id')
+   .eq('username',username)
+   .maybeSingle();
+
+ if(existingProfile){
+  showToast('اسم المستخدم مستخدم بالفعل');
+  return;
+ }
+
+ const email = `${username}@attendance.local`;
+
+ const {data:authData,error:authError} =
+  await supabaseAuthClient.auth.signUp({
+   email,
+   password,
+   options:{
+    data:{
+     username,
+     full_name:name,
+     role:'employee'
+    }
+   }
+  });
+
+ if(authError){
+  console.error(authError);
+  showToast('تعذر إنشاء حساب الدخول: '+authError.message);
+  return;
+ }
+
+ const userId = authData?.user?.id;
+
+ if(!userId){
+  showToast('تم إنشاء الحساب لكن لم يتم إرجاع معرف المستخدم');
+  return;
+ }
+
+ const {data:employee,error:employeeError} =
+  await supabaseClient
+   .from('employees')
+   .insert({name})
+   .select()
+   .single();
+
+ if(employeeError){
+  console.error(employeeError);
+  showToast('تم إنشاء الحساب لكن تعذر إنشاء الموظف: '+employeeError.message);
+  return;
+ }
+
+ const {error:profileError} =
+  await supabaseClient
+   .from('profiles')
+   .insert({
+    id:userId,
+    username,
+    full_name:name,
+    role:'employee',
+    employee_id:employee.id
+   });
+
+ if(profileError){
+  console.error(profileError);
+  showToast('تم إنشاء الموظف لكن تعذر حفظ صلاحيات الحساب: '+profileError.message);
+  return;
+ }
+
+ await writeManagementLog(
+  'إنشاء حساب موظف',
+  employee.id,
+  name,
+  `Username: ${username}`
+ );
+
+ document.getElementById('newEmployeeName').value='';
+ document.getElementById('newEmployeeUsername').value='';
+ document.getElementById('newEmployeePassword').value='';
+
+ await loadAllData();
+
+ showToast('تم إنشاء حساب الموظف بنجاح');
 }
 
 
@@ -3615,36 +3857,189 @@ function printWeeklyReport(){
    LANGUAGE
 ========================================================= */
 
+const I18N = {
+ 'نظام الحضور والاستراحات':'Attendance & Breaks System',
+ 'إضافة وإدارة الموظفين':'Employee Management',
+ 'حسابات الموظفين':'Employee Accounts',
+ 'اختر موظفاً مسجلاً...':'Select a registered employee...',
+ 'أو اكتب اسم موظف جديد':'Or enter a new employee name',
+ 'إضافة موظف':'Add Employee',
+ 'اسم الموظف':'Employee name',
+ 'اسم المستخدم':'Username',
+ 'كلمة المرور':'Password',
+ 'إنشاء حساب موظف':'Create Employee Account',
+ 'يمكنك إنشاء حساب للموظف مباشرة من هنا، بدون إدخال بريد إلكتروني.':'Create the employee account directly here. No email is required.',
+ 'إجمالي الموظفين':'Total Employees',
+ 'متواجد حالياً':'Currently Present',
+ 'في استراحة':'On Break',
+ 'غير متواجد':'Not Present',
+ 'سجل الحضور والنشاط المباشر':'Live Attendance & Activity',
+ 'الموظف':'Employee',
+ 'الحالة':'Status',
+ 'الحضور':'Check-in',
+ 'الاستراحة':'Break',
+ 'الالتزام':'Compliance',
+ 'الإجراءات':'Actions',
+ 'التقرير الأسبوعي':'Weekly Report',
+ 'كل الموظفين':'All Employees',
+ 'إنشاء التقرير':'Generate Report',
+ 'هذا الأسبوع':'This Week',
+ 'تصدير CSV':'Export CSV',
+ 'طباعة / PDF':'Print / PDF',
+ 'سجل الإدارة':'Management Log',
+ 'تحديث السجل':'Refresh Log',
+ 'التاريخ':'Date',
+ 'الإجراء':'Action',
+ 'التفاصيل':'Details',
+ 'بواسطة':'By',
+ 'سجل النشاط':'Activity Log',
+ 'المدة':'Duration',
+ 'تعديل نسبة الالتزام':'Edit Compliance',
+ 'النسبة الجديدة':'New percentage',
+ 'سبب التعديل':'Reason for change',
+ 'اكتب سبب تعديل النسبة...':'Enter the reason for changing the percentage...',
+ 'إلغاء':'Cancel',
+ 'حفظ التعديل':'Save Change',
+ 'تسجيل الدخول':'Login',
+ 'دخول':'Sign In',
+ 'اسم المستخدم غير موجود':'Username not found',
+ 'أدخل اسم المستخدم وكلمة المرور':'Enter username and password',
+ 'اسم المستخدم أو كلمة المرور غير صحيحة':'Incorrect username or password',
+ 'تعذر قراءة صلاحيات المستخدم':'Unable to read user permissions',
+ 'لا يوجد Profile لهذا الحساب':'No profile exists for this account',
+ 'المستخدم:':'User:',
+ 'تسجيل الخروج':'Log out',
+ 'وضع الموظف: يمكنك تسجيل حضورك وإدارة بريكاتك ووقتها فقط.':'Employee mode: you can check in and manage your own breaks only.',
+ 'وضع Admin: جميع صلاحيات الإدارة متاحة.':'Admin mode: all management permissions are available.',
+ 'وضع المدير: صلاحيات الإدارة والتقارير متاحة.':'Manager mode: management and reports are available.',
+ 'تعذر تحميل الموظفين':'Unable to load employees',
+ 'ليس لديك صلاحية إضافة موظف':'You do not have permission to add employees',
+ 'ليس لديك صلاحية إنشاء حساب موظف':'You do not have permission to create employee accounts',
+ 'اكتب اسم الموظف':'Enter the employee name',
+ 'الموظف موجود بالفعل':'Employee already exists',
+ 'تمت إضافة الموظف بنجاح':'Employee added successfully',
+ 'تمت إضافة الموظف':'Employee added',
+ 'تعذر إضافة الموظف':'Unable to add employee',
+ 'لا يمكنك تنفيذ إجراء على موظف آخر':'You cannot perform an action on another employee',
+ 'الموظف مسجل حضور بالفعل':'Employee is already checked in',
+ 'تعذر تسجيل الحضور':'Unable to check in',
+ 'تسجيل حضور':'Check-in',
+ 'تم تسجيل الحضور':'Checked in',
+ 'يجب إنهاء الاستراحة أولاً':'The break must be finished first',
+ 'تعذر تسجيل الخروج':'Unable to check out',
+ 'تسجيل خروج':'Check-out',
+ 'تم تسجيل الخروج':'Checked out',
+ 'يجب تسجيل الحضور أولاً':'Check in first',
+ 'لدى الموظف استراحة نشطة بالفعل':'Employee already has an active break',
+ 'تم استخدام هذه الاستراحة اليوم':'This break has already been used today',
+ 'ليس لديك صلاحية الاستراحة المصرح بها':'You do not have permission for an authorized break',
+ 'أدخل مدة الاستراحة بالدقائق من 1 إلى 180:':'Enter break duration in minutes (1–180):',
+ 'المدة يجب أن تكون بين 1 و180 دقيقة':'Duration must be between 1 and 180 minutes',
+ 'تعذر بدء الاستراحة':'Unable to start break',
+ 'بدء استراحة':'Start break',
+ 'استراحة مصرح بها':'Authorized break',
+ 'تم بدء الاستراحة':'Break started',
+ 'لا يمكنك إنهاء استراحة موظف آخر':'You cannot finish another employee’s break',
+ 'تعذر إنهاء الاستراحة':'Unable to finish break',
+ 'إنهاء استراحة':'Finish break',
+ 'ضمن الوقت المحدد':'Within allowed time',
+ 'تم إنهاء الاستراحة':'Break finished',
+ 'متاح':'Available',
+ 'حضور':'Check-in',
+ 'تدخين':'Smoking',
+ 'عشاء':'Dinner',
+ 'طارئة':'Emergency',
+ 'مصرح بها':'Authorized',
+ 'خروج':'Check-out',
+ 'عودة':'Return',
+ 'تعطيل':'Disable',
+ 'لا توجد بيانات حضور لهذا الحساب':'No attendance data for this account',
+ 'لا توجد سجلات':'No records',
+ 'لا توجد سجلات إدارية':'No management records',
+ 'تعذر تحميل سجل الإدارة':'Unable to load management log',
+ 'تعذر تحميل بيانات الحضور':'Unable to load attendance data',
+ 'تعذر تحميل بيانات الاستراحات':'Unable to load break data',
+ 'أنشئ التقرير أولاً':'Generate the report first',
+ 'تم تصدير التقرير':'Report exported',
+ 'المتصفح منع نافذة الطباعة':'The browser blocked the print window',
+ 'تعديل نسبة الالتزام متاح للـ Admin فقط':'Compliance editing is available to Admin only',
+ 'هذه العملية للـ Admin فقط':'This operation is for Admin only',
+ 'النسبة يجب أن تكون بين 0 و100':'Percentage must be between 0 and 100',
+ 'يجب كتابة سبب تعديل النسبة':'Please enter a reason for changing the percentage',
+ 'تعذر حفظ نسبة الالتزام':'Unable to save compliance',
+ 'تم حفظ نسبة الالتزام':'Compliance saved',
+ 'تعذر تعطيل الموظف':'Unable to disable employee',
+ 'تعطيل موظف':'Disable employee',
+ 'تم تعطيل الموظف':'Employee disabled',
+ 'دقيقة':'min',
+ 'ساعة':'hr'
+,\n 'إدارة حسابات الموظفين': 'Employee Account Management',\n 'يمكنك تغيير كلمة المرور أو الصلاحية أو تعطيل الحساب أو حذفه. هذه العمليات الإدارية تتطلب إعداد Edge Function الآمن في Supabase.': 'Change passwords, roles, disable or delete accounts. These actions require a secure Supabase Edge Function.',\n 'تحديث قائمة الحسابات': 'Refresh Accounts',\n 'اسم المستخدم': 'Username',\n 'الصلاحية': 'Role',\n 'الإجراءات': 'Actions',\n 'اسم الموظف': 'Employee Name',\n 'إدارة الحسابات متاحة للمسؤول فقط': 'Account management is for admins only',\n 'جارٍ تحميل الحسابات...': 'Loading accounts...',\n 'تعذر تحميل الحسابات': 'Could not load accounts',\n 'لا توجد حسابات.': 'No accounts found.',\n 'تغيير كلمة المرور': 'Change Password',\n 'تغيير الصلاحية': 'Change Role',\n 'تعطيل / تفعيل': 'Disable / Enable',\n 'حذف الحساب': 'Delete Account',\n 'حسابك الحالي': 'Your current account',\n 'تم تنفيذ العملية': 'Action completed',\n 'لم تنجح العملية. تأكد من نشر Edge Function باسم manage-employee-account في Supabase.': 'Action failed. Deploy the manage-employee-account Edge Function in Supabase.'\n};
+
+function t(value){
+ if(value===null || value===undefined) return value;
+
+ let out=String(value);
+
+ if(currentLang==='en'){
+  Object.keys(I18N)
+   .sort((a,b)=>b.length-a.length)
+   .forEach(k=>out=out.split(k).join(I18N[k]));
+
+  out=out.replace(/تبقى (\d+) دقيقة/g,'$1 min remaining before the next smoking break');
+  out=out.replace(/تجاوز (\d+) دقيقة/g,'Exceeded by $1 min');
+  out=out.replace(/انتهت الاستراحة — تجاوز (\d+) دقيقة/g,'Break ended — exceeded by $1 min');
+  out=out.replace(/تم تعديل نسبة الالتزام إلى (\d+)%\. السبب: (.*)/g,'Compliance changed to $1%. Reason: $2');
+  out=out.replace(/النسبة (\d+)%. (.*)/g,'Percentage $1%. $2');
+  out=out.replace(/هل تريد تعطيل الموظف (.*)؟/g,'Disable employee $1?');
+  return out;
+ }
+
+ // عند الرجوع للعربية نعيد النصوص الإنجليزية إلى أصلها العربي.
+ Object.entries(I18N)
+  .sort((a,b)=>b[1].length-a[1].length)
+  .forEach(([ar,en])=>out=out.split(en).join(ar));
+
+ return out;
+}
+
+function applyLanguage(){
+ const walker=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT);
+ const nodes=[];
+ while(walker.nextNode()) nodes.push(walker.currentNode);
+
+ nodes.forEach(node=>{
+  if(node.parentElement && ['SCRIPT','STYLE'].includes(node.parentElement.tagName)) return;
+  node.nodeValue=t(node.nodeValue);
+ });
+
+ document.querySelectorAll('input[placeholder],textarea[placeholder]')
+  .forEach(el=>el.placeholder=t(el.placeholder));
+}
+
+
+
 function toggleLanguage(){
 
- currentLang =
-  currentLang==='ar'
-   ? 'en'
-   : 'ar';
+ currentLang = currentLang==='ar' ? 'en' : 'ar';
 
- localStorage.setItem(
-  'attendance_language',
-  currentLang
- );
+ localStorage.setItem('attendance_language',currentLang);
 
- document.documentElement.lang =
-  currentLang;
+ document.documentElement.lang=currentLang;
+ document.documentElement.dir=currentLang==='ar' ? 'rtl' : 'ltr';
 
- document.documentElement.dir =
-  currentLang==='ar'
-   ? 'rtl'
-   : 'ltr';
-
- document.getElementById(
-  'langBtn'
- ).innerText =
-  currentLang==='ar'
-   ? 'English'
-   : 'العربية';
+ document.getElementById('langBtn').innerText =
+  currentLang==='ar' ? 'English' : 'العربية';
 
  updateClock();
-
  renderTable();
+ renderUserBar();
+ applyLanguage();
+
+ if(isManagement()){
+  setCurrentWeek();
+  generateWeeklyReport();
+  loadManagementLogs();
+ }
 
 }
 
