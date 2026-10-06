@@ -1694,172 +1694,231 @@ async function startBreak(
  employeeId,
  breakType
 ){
- const key='break:'+employeeId; if(!beginAction(key)) return;
+ const key='break:'+employeeId;
+ if(!beginAction(key)) return;
+
  try{
- if(currentProfile?.role === 'employee' && Number(employeeId) !== Number(currentProfile.employee_id)){
-  showToast('لا يمكنك تنفيذ إجراء على موظف آخر');
-  return;
- }
-
-
- const employee =
-  employeesList.find(
-   e=>Number(e.id)===Number(employeeId)
-  );
-
- if(!employee)
-  return;
-
- const attendance =
-  getAttendance(employeeId);
-
- if(!attendance?.present){
-
-  showToast(
-   'يجب تسجيل الحضور أولاً'
-  );
-
-  return;
-
- }
-
- if(getActiveBreak(employeeId)){
-
-  showToast(
-   'لدى الموظف استراحة نشطة بالفعل'
-  );
-
-  return;
-
- }
-
- const previous =
-  breaksList.filter(
-   b =>
-    Number(b.employee_id) ===
-    Number(employeeId)
-  );
-
- if(
-  breakType!=='authorized' &&
-  previous.some(
-   b=>b.break_type===breakType
-  )
- ){
-
-  showToast(
-   'تم استخدام هذه الاستراحة اليوم'
-  );
-
-  return;
-
- }
-
- if(breakType==='smoking'){
-
-  const cooldown =
-   getSmokingCooldown(employeeId);
-
-  if(cooldown!==null && cooldown>0){
-
-   showToast(
-    `تبقى ${cooldown} دقيقة قبل استراحة التدخين التالية`
-   );
-
-   return;
-
-  }
-
- }
-
- let allowedMinutes=0;
-
- if(breakType==='authorized'){
-
-  if(!isManagement()){
-
-   showToast(
-    'ليس لديك صلاحية الاستراحة المصرح بها'
-   );
-
-   return;
-
-  }
-
-  const value =
-   prompt(
-    'أدخل مدة الاستراحة بالدقائق من 1 إلى 180:',
-    '30'
-   );
-
-  if(value===null)
-   return;
-
-  allowedMinutes=Number(value);
 
   if(
-   !Number.isFinite(allowedMinutes) ||
-   allowedMinutes<1 ||
-   allowedMinutes>180
+   currentProfile?.role === 'employee' &&
+   Number(employeeId) !== Number(currentProfile.employee_id)
   ){
+   showToast('لا يمكنك تنفيذ إجراء على موظف آخر');
+   return;
+  }
+
+  const employee =
+   employeesList.find(
+    e=>Number(e.id)===Number(employeeId)
+   );
+
+  if(!employee)
+   return;
+
+  const attendance =
+   getAttendance(employeeId);
+
+  if(!attendance?.present){
+   showToast('يجب تسجيل الحضور أولاً');
+   return;
+  }
+
+  if(getActiveBreak(employeeId)){
+   showToast('لدى الموظف استراحة نشطة بالفعل');
+   return;
+  }
+
+  if(breakType === 'emergency'){
+
+   const pendingEmergency =
+    permissionRequests.find(
+     r =>
+      Number(r.employee_id) === Number(employeeId) &&
+      r.request_type === 'استراحة طارئة' &&
+      (r.status || 'pending') === 'pending'
+    );
+
+   if(pendingEmergency){
+    showToast(
+     'لديك طلب استراحة طارئة بانتظار موافقة المسؤول'
+    );
+    return;
+   }
+
+   const {
+    data,
+    error
+   } =
+   await supabaseClient
+    .from('permission_requests')
+    .insert({
+     employee_id:employee.id,
+     employee_name:employee.name,
+     request_type:'استراحة طارئة',
+     note:'طلب استراحة طارئة لمدة 10 دقائق',
+     status:'pending',
+     created_by:currentUser.id
+    })
+    .select()
+    .single();
+
+   if(error){
+
+    console.error(
+     'Emergency break request error:',
+     error
+    );
+
+    showToast(
+     'تعذر إرسال طلب استراحة الطوارئ'
+    );
+
+    return;
+   }
+
+   permissionRequests.unshift(data);
+
+   renderPermissionRequests();
 
    showToast(
-    'المدة يجب أن تكون بين 1 و180 دقيقة'
+    'تم إرسال طلب استراحة الطوارئ بانتظار موافقة المسؤول'
    );
 
    return;
+  }
+
+  const previous =
+   breaksList.filter(
+    b =>
+     Number(b.employee_id) ===
+     Number(employeeId)
+   );
+
+  if(
+   breakType !== 'authorized' &&
+   previous.some(
+    b=>b.break_type===breakType
+   )
+  ){
+   showToast(
+    'تم استخدام هذه الاستراحة اليوم'
+   );
+   return;
+  }
+
+  if(breakType==='smoking'){
+
+   const cooldown =
+    getSmokingCooldown(employeeId);
+
+   if(cooldown!==null && cooldown>0){
+
+    showToast(
+     `تبقى ${cooldown} دقيقة قبل استراحة التدخين التالية`
+    );
+
+    return;
+   }
+  }
+
+  let allowedMinutes=0;
+
+  if(breakType==='authorized'){
+
+   if(!isManagement()){
+
+    showToast(
+     'ليس لديك صلاحية الاستراحة المصرح بها'
+    );
+
+    return;
+   }
+
+   const value =
+    prompt(
+     'أدخل مدة الاستراحة بالدقائق من 1 إلى 180:',
+     '30'
+    );
+
+   if(value===null)
+    return;
+
+   allowedMinutes=Number(value);
+
+   if(
+    !Number.isFinite(allowedMinutes) ||
+    allowedMinutes<1 ||
+    allowedMinutes>180
+   ){
+
+    showToast(
+     'المدة يجب أن تكون بين 1 و180 دقيقة'
+    );
+
+    return;
+   }
+
+  }else{
+
+   allowedMinutes =
+    BREAK_RULES[breakType].minutes;
 
   }
 
- }else{
+  const now =
+   new Date().toISOString();
 
-  allowedMinutes =
-   BREAK_RULES[breakType].minutes;
+  const {
+   data,
+   error
+  } =
+  await supabaseClient
+   .from('breaks')
+   .insert({
+    employee_id:employeeId,
+    break_type:breakType,
+    start_time:now,
+    allowed_minutes:allowedMinutes,
+    authorized_by:
+     breakType==='authorized'
+      ? currentUser.id
+      : null
+   })
+   .select()
+   .single();
 
- }
+  if(error){
 
- const now =
-  new Date().toISOString();
+   console.error(error);
 
- const {
-  data,
-  error
- } =
- await supabaseClient
-  .from('breaks')
-  .insert({
-   employee_id:employeeId,
-   break_type:breakType,
-   start_time:now,
-   allowed_minutes:allowedMinutes,
-   authorized_by:
-    breakType==='authorized'
-     ? currentUser.id
-     : null
-  })
-  .select()
-  .single();
+   showToast(
+    'تعذر بدء الاستراحة'
+   );
 
- if(error){
+   return;
+  }
 
-  console.error(error);
+  patchBreak(data);
+  renderTable();
+  updateStats();
+
+  writeActivity(
+   employeeId,
+   employee.name,
+   'بدء استراحة',
+   allowedMinutes+' دقيقة',
+   breakType==='authorized'
+    ? 'استراحة مصرح بها'
+    : BREAK_RULES[breakType].name
+  ).catch(()=>{});
 
   showToast(
-   'تعذر بدء الاستراحة'
+   'تم بدء الاستراحة'
   );
 
-  return;
-
+ }finally{
+  endAction(key);
  }
-
- patchBreak(data); renderTable(); updateStats();
- writeActivity(employeeId,employee.name,'بدء استراحة',allowedMinutes+' دقيقة',breakType==='authorized'?'استراحة مصرح بها':BREAK_RULES[breakType].name).catch(()=>{});
-
- showToast(
-  'تم بدء الاستراحة'
- );
-
- }finally{ endAction(key); }
 }
 
 
@@ -2925,13 +2984,108 @@ async function submitPermissionRequest(){
 
 async function updatePermissionRequest(id,status){
  if(!isManagement()) return;
- const r=permissionRequests.find(x=>Number(x.id)===Number(id)); if(!r) return;
- if(status==='rejected'&&!confirm('هل تريد رفض طلب الإذن؟')) return;
- const {error}=await supabaseClient.from('permission_requests').update({status,decided_by:currentUser.id,decided_at:new Date().toISOString()}).eq('id',id);
- if(error){ console.error(error); return showToast('تعذر تحديث طلب الإذن'); }
- r.status=status; r.decided_by=currentUser.id; r.decided_at=new Date().toISOString(); renderPermissionRequests();
- writeManagementLog(status==='approved'?'الموافقة على إذن':'رفض إذن',r.employee_id,r.employee_name,r.request_type).catch(()=>{});
- showToast(status==='approved'?'تمت الموافقة على الإذن':'تم رفض الإذن');
+
+ const r =
+  permissionRequests.find(
+   x=>Number(x.id)===Number(id)
+  );
+
+ if(!r) return;
+
+ if(status==='rejected' &&
+    !confirm('هل تريد رفض طلب الإذن؟'))
+  return;
+
+ if(
+  status==='approved' &&
+  r.request_type==='استراحة طارئة'
+ ){
+
+  const attendance =
+   getAttendance(r.employee_id);
+
+  if(!attendance?.present){
+   showToast('لا يمكن الموافقة: الموظف غير مسجل حضور');
+   return;
+  }
+
+  if(getActiveBreak(r.employee_id)){
+   showToast('لا يمكن الموافقة: لدى الموظف استراحة نشطة بالفعل');
+   return;
+  }
+
+  const {
+   data:breakData,
+   error:breakError
+  } =
+  await supabaseClient
+   .from('breaks')
+   .insert({
+    employee_id:r.employee_id,
+    break_type:'emergency',
+    start_time:new Date().toISOString(),
+    allowed_minutes:BREAK_RULES.emergency.minutes,
+    authorized_by:currentUser.id
+   })
+   .select()
+   .single();
+
+  if(breakError){
+   console.error(
+    'Emergency break approval error:',
+    breakError
+   );
+   showToast('تعذر بدء استراحة الطوارئ');
+   return;
+  }
+
+  patchBreak(breakData);
+ }
+
+ const {
+  error
+ } =
+ await supabaseClient
+  .from('permission_requests')
+  .update({
+   status,
+   decided_by:currentUser.id,
+   decided_at:new Date().toISOString()
+  })
+  .eq('id',id)
+  .eq('status','pending');
+
+ if(error){
+  console.error(error);
+  return showToast('تعذر تحديث طلب الإذن');
+ }
+
+ r.status=status;
+ r.decided_by=currentUser.id;
+ r.decided_at=new Date().toISOString();
+
+ renderPermissionRequests();
+ renderTable();
+ updateStats();
+
+ writeManagementLog(
+  status==='approved'
+   ? 'الموافقة على إذن'
+   : 'رفض إذن',
+  r.employee_id,
+  r.employee_name,
+  r.request_type
+ ).catch(()=>{});
+
+ showToast(
+  status==='approved'
+   ? (
+      r.request_type==='استراحة طارئة'
+       ? 'تمت الموافقة وبدء استراحة الطوارئ لمدة 10 دقائق'
+       : 'تمت الموافقة على الإذن'
+     )
+   : 'تم رفض الإذن'
+ );
 }
 
 function subscribeRealtime(){
