@@ -1391,7 +1391,7 @@ async function loadAccountProfiles(){
    <td>${esc(e.name)}</td><td>${esc(p?.username||'—')}</td><td>${esc(p?.role||'employee')}</td>
    <td>${active?'<span class="badge badge-green">فعال</span>':'<span class="badge badge-red">معطل</span>'}</td>
    <td><div class="actions">${active
-    ? `<button class="btn-orange" onclick="deactivateEmployee(${e.id})">تعطيل</button><button class="btn-red" onclick="deleteEmployeePermanently(${e.id})">حذف نهائي</button>`
+    ? `<button class="btn-orange" onclick="deactivateEmployee(${e.id},true)">تعطيل</button><button class="btn-red" onclick="deactivateEmployee(${e.id},false)">حذف/إخفاء</button>`
     : `<button class="btn-green" onclick="reactivateEmployee(${e.id})">تفعيل</button>`}</div></td>
   </tr>`;
  }).join('')||'<tr><td colspan="5">لا توجد حسابات.</td></tr>';
@@ -2474,43 +2474,62 @@ function renderTable(){
    DEACTIVATE
 ========================================================= */
 
-async function deactivateEmployee(employeeId){
+async function deactivateEmployee(employeeId,softOnly=true){
  if(!isManagement()) return;
  const employee=allEmployeesList.find(e=>Number(e.id)===Number(employeeId));
- if(!employee) return;
- if(!confirm(`هل تريد تعطيل الموظف ${employee.name}؟`)) return;
- const {error}=await supabaseClient.from('employees').update({active:false}).eq('id',employeeId);
- if(error){ console.error(error); return showToast('تعذر تعطيل الموظف'); }
- employee.active=false;
- employeesList=employeesList.filter(e=>Number(e.id)!==Number(employeeId));
- populateEmployeeSelects(); renderTable(); updateStats();
- writeManagementLog('تعطيل موظف',employeeId,employee.name,'تم تعطيل الموظف').catch(()=>{});
- writeActivity(employeeId,employee.name,'تعطيل موظف',null,'تم تعطيل الموظف').catch(()=>{});
- if(isAdmin()) loadAccountProfiles();
- showToast('تم تعطيل الموظف');
-}
+ if(!employee) return showToast('الموظف غير موجود');
 
-async function deleteEmployeePermanently(employeeId){
- if(!isManagement()) return;
- const employee=allEmployeesList.find(e=>Number(e.id)===Number(employeeId));
- if(!employee) return;
- const ok=confirm(`تحذير: سيتم حذف الموظف ${employee.name} نهائياً مع حسابه وجميع سجلات الحضور والاستراحات والأذونات وسجلات النشاط والإدارة.\n\nلا يمكن التراجع عن هذا الإجراء.\n\nهل تريد المتابعة؟`);
- if(!ok) return;
- const confirmAgain=confirm(`تأكيد أخير\n\nحذف ${employee.name} نهائياً؟`);
- if(!confirmAgain) return;
- showToast('جارٍ حذف الموظف وسجلاته نهائياً...');
- const {data,error}=await supabaseClient.functions.invoke('manage-employee-account',{
-  body:{action:'delete_employee',employee_id:employeeId,confirm_delete:true}
- });
- if(error || data?.error){
-  console.error(error||data?.error);
-  return showToast(data?.error||'تعذر حذف الموظف نهائياً');
+ if(softOnly){
+  if(!confirm(`هل تريد تعطيل الموظف ${employee.name}؟`)) return;
+  const {error}=await supabaseClient.from('employees').update({active:false}).eq('id',employeeId);
+  if(error){ console.error('Disable employee error:',error); return showToast(error.message||'تعذر تعطيل الموظف'); }
+  employee.active=false;
+  employeesList=employeesList.filter(e=>Number(e.id)!==Number(employeeId));
+  populateEmployeeSelects(); renderTable(); updateStats();
+  writeManagementLog('تعطيل موظف',employeeId,employee.name,'تم تعطيل الموظف').catch(()=>{});
+  writeActivity(employeeId,employee.name,'تعطيل موظف',null,'تم تعطيل الموظف').catch(()=>{});
+  if(isAdmin()) loadAccountProfiles();
+  showToast('تم تعطيل الموظف');
+  return;
  }
+
+ if(!isAdmin()) return showToast('الحذف النهائي متاح للمسؤول فقط');
+ if(!confirm(`سيتم حذف الموظف ${employee.name} نهائياً مع حسابه وجميع سجلاته. لا يمكن التراجع. هل تريد المتابعة؟`)) return;
+
+ showToast('جارٍ حذف الموظف نهائياً...');
+
+ const {data,error}=await supabaseClient.functions.invoke('manage-employee-account',{
+  body:{
+   action:'delete_employee',
+   employee_id:employeeId,
+   confirm_delete:true
+  }
+ });
+
+ console.log('delete_employee response:',{data,error});
+
+ if(error || data?.error){
+  const message=data?.error || error?.message || 'تعذر حذف الموظف';
+  console.error('Permanent delete error:',error||data);
+  showToast(message);
+  alert('فشل حذف الموظف:\n'+message);
+  return;
+ }
+
  allEmployeesList=allEmployeesList.filter(e=>Number(e.id)!==Number(employeeId));
  employeesList=employeesList.filter(e=>Number(e.id)!==Number(employeeId));
- populateEmployeeSelects(); renderTable(); updateStats();
+ attendanceList=attendanceList.filter(x=>Number(x.employee_id)!==Number(employeeId));
+ breaksList=breaksList.filter(x=>Number(x.employee_id)!==Number(employeeId));
+ permissionRequests=permissionRequests.filter(x=>Number(x.employee_id)!==Number(employeeId));
+
+ populateEmployeeSelects();
+ renderTable();
+ updateStats();
  if(isAdmin()) await loadAccountProfiles();
- showToast(data?.message||'تم حذف الموظف وجميع سجلاته نهائياً');
+ await loadManagementLogs();
+ await loadActivityLogs();
+
+ showToast('تم حذف الموظف وجميع سجلاته نهائياً');
 }
 
 
