@@ -26,7 +26,7 @@
 
 body{
  margin:0;
- background:#ffffff;
+ background:#e5e7eb;
  color:var(--ink);
  font-family:Tahoma,Arial,sans-serif;
  min-height:100vh;
@@ -712,86 +712,10 @@ tbody tr:hover td{background:#eff6ff !important}
 }
 
 
-/* ===== الرسم البياني للتقرير الأسبوعي ===== */
-.weekly-analytics{
- margin:12px 0 16px;
- display:grid;
- grid-template-columns:2fr 1fr;
- gap:12px;
-}
-.weekly-chart{
- background:#fff;
- border:1px solid #dbe3ee;
- border-radius:12px;
- padding:14px;
- overflow:hidden;
-}
-.weekly-chart h3{
- margin:0 0 12px;
- color:#111827;
- font-size:14px;
-}
-.chart-row{
- display:grid;
- grid-template-columns:110px minmax(100px,1fr) 75px;
- align-items:center;
- gap:8px;
- margin:9px 0;
-}
-.chart-name{
- color:#111827;
- font-size:11px;
- white-space:nowrap;
- overflow:hidden;
- text-overflow:ellipsis;
-}
-.chart-track{
- height:13px;
- background:#eef2f7;
- border:1px solid #e2e8f0;
- border-radius:999px;
- overflow:hidden;
-}
-.chart-fill{
- height:100%;
- border-radius:999px;
- min-width:2px;
-}
-.chart-value{
- color:#111827;
- font-size:10px;
- font-weight:700;
- text-align:left;
- direction:ltr;
- white-space:nowrap;
-}
-.chart-legend{
- display:flex;
- flex-wrap:wrap;
- gap:12px;
- margin-top:10px;
- color:#475569;
- font-size:10px;
-}
-.chart-legend span{
- display:inline-flex;
- align-items:center;
- gap:5px;
-}
-.chart-dot{
- width:9px;
- height:9px;
- border-radius:50%;
- display:inline-block;
-}
-.chart-empty{
- color:#64748b;
- font-size:11px;
- text-align:center;
- padding:15px;
-}
-@media(max-width:900px){
- .weekly-analytics{grid-template-columns:1fr}
+/* زر إخفاء/إظهار سجل النشاط */
+#activityLogToggleBtn{
+ min-width:150px;
+ cursor:pointer;
 }
 
 </style>
@@ -1138,25 +1062,40 @@ tbody tr:hover td{background:#eff6ff !important}
  </div>
 
  <!-- سجل النشاط -->
- <div class="card employee-hidden">
+ <div class="card employee-hidden" id="activityLogCard">
 
-  <h2>سجل النشاط</h2>
+  <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+   <h2 style="margin:0">سجل النشاط</h2>
 
-  <div class="table-wrap">
+   <button
+    type="button"
+    class="btn-dark"
+    id="activityLogToggleBtn"
+    onclick="toggleActivityLog()"
+   >
+    إخفاء سجل النشاط
+   </button>
+  </div>
 
-   <table>
-    <thead>
-     <tr>
-      <th>التاريخ</th>
-      <th>الموظف</th>
-      <th>الإجراء</th>
-      <th>المدة</th>
-      <th>التفاصيل</th>
-     </tr>
-    </thead>
+  <div id="activityLogContent" style="margin-top:12px">
 
-    <tbody id="activityLogsBody"></tbody>
-   </table>
+   <div class="table-wrap">
+
+    <table>
+     <thead>
+      <tr>
+       <th>التاريخ</th>
+       <th>الموظف</th>
+       <th>الإجراء</th>
+       <th>المدة</th>
+       <th>التفاصيل</th>
+      </tr>
+     </thead>
+
+     <tbody id="activityLogsBody"></tbody>
+    </table>
+
+   </div>
 
   </div>
 
@@ -3393,7 +3332,133 @@ async function writeActivity(
 }
 
 
+
+function toggleActivityLog(){
+
+ const content =
+  document.getElementById('activityLogContent');
+
+ const button =
+  document.getElementById('activityLogToggleBtn');
+
+ if(!content || !button) return;
+
+ const isHidden =
+  content.style.display === 'none';
+
+ if(isHidden){
+
+  content.style.display = '';
+
+  button.innerText =
+   'إخفاء سجل النشاط';
+
+  localStorage.setItem(
+   'activityLogHidden',
+   '0'
+  );
+
+ }else{
+
+  content.style.display = 'none';
+
+  button.innerText =
+   'إظهار سجل النشاط';
+
+  localStorage.setItem(
+   'activityLogHidden',
+   '1'
+  );
+
+ }
+
+}
+
+
+function restoreActivityLogVisibility(){
+
+ const content =
+  document.getElementById('activityLogContent');
+
+ const button =
+  document.getElementById('activityLogToggleBtn');
+
+ if(!content || !button) return;
+
+ const hidden =
+  localStorage.getItem(
+   'activityLogHidden'
+  ) === '1';
+
+ if(hidden){
+
+  content.style.display = 'none';
+
+  button.innerText =
+   'إظهار سجل النشاط';
+
+ }else{
+
+  content.style.display = '';
+
+  button.innerText =
+   'إخفاء سجل النشاط';
+
+ }
+
+}
+
+
+async function cleanupOldActivityLogs(){
+
+ try{
+
+  const cutoff = new Date(
+   Date.now() - (30 * 24 * 60 * 60 * 1000)
+  );
+
+  const {
+   error
+  } =
+  await supabaseClient
+   .from('activity_logs')
+   .delete()
+   .lt(
+    'created_at',
+    cutoff.toISOString()
+   );
+
+  if(error){
+   console.error(
+    'Activity log cleanup error:',
+    error
+   );
+   return false;
+  }
+
+  console.log(
+   'Activity logs older than 30 days deleted.'
+  );
+
+  return true;
+
+ }catch(error){
+
+  console.error(
+   'Activity log cleanup exception:',
+   error
+  );
+
+  return false;
+ }
+
+}
+
+
 async function loadActivityLogs(){
+
+ // حذف السجلات الأقدم من 30 يوم قبل عرض السجل.
+ await cleanupOldActivityLogs();
 
  const {
   data,
@@ -3466,6 +3531,16 @@ async function loadActivityLogs(){
 
 }
 
+
+
+setTimeout(()=>{
+ restoreActivityLogVisibility();
+},300);
+
+/* تنظيف سجل النشاط تلقائياً عند تشغيل النظام */
+setTimeout(()=>{
+ cleanupOldActivityLogs();
+},1000);
 
 /* =========================================================
    MANAGEMENT LOGS
@@ -4463,100 +4538,6 @@ async function saveWeeklyReview(){
  showToast('تم حفظ ملاحظة وتقييم المدير');
 }
 
-
-function renderWeeklyAnalytics(){
- const host=document.getElementById('weeklyAnalytics');
- if(!host || !weeklyReportRows.length){
-  if(host) host.innerHTML='';
-  return;
- }
-
- const maxWork=Math.max(1,...weeklyReportRows.map(r=>Number(r.workMinutes||0)));
- const maxBreak=Math.max(1,...weeklyReportRows.map(r=>Number(r.breakMinutes||0)));
- const maxCount=Math.max(1,...weeklyReportRows.map(r=>Number(r.breakCount||0)));
-
- const workRows=weeklyReportRows.map(r=>{
-  const value=Number(r.workMinutes||0);
-  const width=Math.max(2,Math.round(value/maxWork*100));
-  return `
-   <div class="chart-row">
-    <div class="chart-name" title="${esc(r.name)}">${esc(r.name)}</div>
-    <div class="chart-track">
-     <div class="chart-fill" style="width:${width}%;background:#22c55e"></div>
-    </div>
-    <div class="chart-value">${minutesToText(value)}</div>
-   </div>`;
- }).join('');
-
- const breakRows=weeklyReportRows.map(r=>{
-  const value=Number(r.breakMinutes||0);
-  const width=Math.max(2,Math.round(value/maxBreak*100));
-  return `
-   <div class="chart-row">
-    <div class="chart-name" title="${esc(r.name)}">${esc(r.name)}</div>
-    <div class="chart-track">
-     <div class="chart-fill" style="width:${width}%;background:#f59e0b"></div>
-    </div>
-    <div class="chart-value">${minutesToText(value)}</div>
-   </div>`;
- }).join('');
-
- const countRows=weeklyReportRows.map(r=>{
-  const value=Number(r.breakCount||0);
-  const width=Math.max(2,Math.round(value/maxCount*100));
-  return `
-   <div class="chart-row">
-    <div class="chart-name" title="${esc(r.name)}">${esc(r.name)}</div>
-    <div class="chart-track">
-     <div class="chart-fill" style="width:${width}%;background:#2563eb"></div>
-    </div>
-    <div class="chart-value">${value} مرة</div>
-   </div>`;
- }).join('');
-
- host.innerHTML=`
-  <div class="weekly-chart">
-   <h3>رسم بياني — وقت العمل الفعلي لكل موظف</h3>
-   ${workRows || '<div class="chart-empty">لا توجد بيانات</div>'}
-   <div class="chart-legend">
-    <span><i class="chart-dot" style="background:#22c55e"></i>وقت العمل</span>
-   </div>
-  </div>
-
-  <div class="weekly-chart">
-   <h3>ملخص الاستراحات</h3>
-   ${breakRows || '<div class="chart-empty">لا توجد بيانات</div>'}
-   <div class="chart-legend">
-    <span><i class="chart-dot" style="background:#f59e0b"></i>وقت الاستراحة</span>
-   </div>
-  </div>
-
-  <div class="weekly-chart">
-   <h3>عدد مرات الاستراحة</h3>
-   ${countRows || '<div class="chart-empty">لا توجد بيانات</div>'}
-   <div class="chart-legend">
-    <span><i class="chart-dot" style="background:#2563eb"></i>عدد المرات</span>
-   </div>
-  </div>
-
-  <div class="weekly-chart">
-   <h3>نسبة الالتزام والتقييم</h3>
-   ${weeklyReportRows.map(r=>{
-    const value=Math.max(0,Math.min(100,Number(r.compliance||0)));
-    const fill=value>=90?'#22c55e':value>=70?'#f59e0b':'#dc2626';
-    return `
-     <div class="chart-row">
-      <div class="chart-name" title="${esc(r.name)}">${esc(r.name)}</div>
-      <div class="chart-track">
-       <div class="chart-fill" style="width:${value}%;background:${fill}"></div>
-      </div>
-      <div class="chart-value">${value}%</div>
-     </div>`;
-   }).join('')}
-  </div>
- `;
-}
-
 function renderWeeklyReport(from,to,previousFrom,previousTo){
  const area=document.getElementById('reportArea');
 
@@ -4582,8 +4563,6 @@ function renderWeeklyReport(from,to,previousFrom,previousTo){
    <div class="summary-box"><small>تجاوز وقت البريك</small><strong class="${totalOverage>0?'danger':'success'}">${totalOverage} دقيقة</strong></div>
    <div class="summary-box"><small>متوسط الالتزام</small><strong class="success">${averageCompliance}%</strong></div>
   </div>
-
-  <div id="weeklyAnalytics" class="weekly-analytics"></div>
 
   <div style="margin-bottom:12px">
    الفترة:
@@ -4673,8 +4652,6 @@ function renderWeeklyReport(from,to,previousFrom,previousTo){
    </table>
   </div>
  `;
-
- renderWeeklyAnalytics();
 }
 
 /* =========================================================
