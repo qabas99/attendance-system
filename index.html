@@ -514,7 +514,6 @@ tbody tr:last-child td{border-bottom:0}
  <!-- إدارة حساب الموظف -->
  <div class="card management-section">
   <h2>حسابات الموظفين</h2>
-    <button class="btn-orange" onclick="resetAllBreaks()">♻️ تصفير استراحات الجميع</button>
   <div class="form" style="grid-template-columns:1fr 1fr 1fr 1fr">
    <input id="newEmployeeName" placeholder="اسم الموظف">
    <input id="newEmployeeUsername" placeholder="اسم المستخدم">
@@ -1392,11 +1391,48 @@ async function loadAccountProfiles(){
    <td>${esc(e.name)}</td><td>${esc(p?.username||'—')}</td><td>${esc(p?.role||'employee')}</td>
    <td>${active?'<span class="badge badge-green">فعال</span>':'<span class="badge badge-red">معطل</span>'}</td>
    <td><div class="actions">${active
-    ? `<button class="btn-orange" onclick="deactivateEmployee(${e.id},true)">تعطيل</button><button class="btn-red" onclick="deactivateEmployee(${e.id},false)">حذف/إخفاء</button>`
-    : `<button class="btn-green" onclick="reactivateEmployee(${e.id})">تفعيل</button>`}</div></td>
+    ? `<button class="btn-orange" onclick="deactivateEmployee(${e.id},true)">تعطيل</button><button class="btn-red" onclick="deleteEmployeePermanently(${e.id})">حذف</button>`
+    : `<button class="btn-green" onclick="reactivateEmployee(${e.id})">تفعيل</button><button class="btn-red" onclick="deleteEmployeePermanently(${e.id})">حذف</button>`}</div></td>
   </tr>`;
  }).join('')||'<tr><td colspan="5">لا توجد حسابات.</td></tr>';
 }
+
+async function deleteEmployeePermanently(employeeId){
+ if(!isAdmin()) return showToast('حذف الموظف متاح للمسؤول فقط');
+ const employee=allEmployeesList.find(e=>Number(e.id)===Number(employeeId));
+ if(!employee) return showToast('الموظف غير موجود');
+ if(!confirm(`سيتم حذف الموظف ${employee.name} نهائياً مع جميع سجلاته. لا يمكن التراجع عن هذه العملية. هل تريد المتابعة؟`)) return;
+ showToast('جارٍ حذف الموظف...');
+ try{
+  const {data,error}=await supabaseClient.functions.invoke('manage-employee-account',{
+   body:{action:'delete_employee',employee_id:Number(employeeId),confirm_delete:true}
+  });
+  if(error){
+   console.error('delete employee error',error,data);
+   const msg=data?.error || error.message || 'تعذر حذف الموظف';
+   showToast(msg);
+   return;
+  }
+  if(data?.error){
+   console.error('delete employee response error',data.error);
+   showToast(data.error);
+   return;
+  }
+  allEmployeesList=allEmployeesList.filter(e=>Number(e.id)!==Number(employeeId));
+  employeesList=employeesList.filter(e=>Number(e.id)!==Number(employeeId));
+  attendanceList=attendanceList.filter(x=>Number(x.employee_id)!==Number(employeeId));
+  breaksList=breaksList.filter(x=>Number(x.employee_id)!==Number(employeeId));
+  populateEmployeeSelects();
+  renderTable();
+  updateStats();
+  if(isAdmin()) await loadAccountProfiles();
+  showToast(data?.message || 'تم حذف الموظف نهائياً');
+ }catch(err){
+  console.error(err);
+  showToast(err?.message || 'تعذر حذف الموظف');
+ }
+}
+
 
 async function reactivateEmployee(employeeId){
  if(!isManagement()) return;
@@ -2395,12 +2431,6 @@ function renderTable(){
     >
      تعطيل
     </button>
-    <button
-     class="btn-orange"
-     onclick="resetEmployeeBreaks(${employee.id})"
-    >
-     تصفير الاستراحات
-    </button>
    `;
 
   }
@@ -2484,115 +2514,20 @@ function renderTable(){
 async function deactivateEmployee(employeeId,softOnly=true){
  if(!isManagement()) return;
  const employee=allEmployeesList.find(e=>Number(e.id)===Number(employeeId));
- if(!employee) return showToast('الموظف غير موجود');
-
- if(softOnly){
-  if(!confirm(`هل تريد تعطيل الموظف ${employee.name}؟`)) return;
-  const {error}=await supabaseClient.from('employees').update({active:false}).eq('id',employeeId);
-  if(error){ console.error('Disable employee error:',error); return showToast(error.message||'تعذر تعطيل الموظف'); }
-  employee.active=false;
-  employeesList=employeesList.filter(e=>Number(e.id)!==Number(employeeId));
-  populateEmployeeSelects(); renderTable(); updateStats();
-  writeManagementLog('تعطيل موظف',employeeId,employee.name,'تم تعطيل الموظف').catch(()=>{});
-  writeActivity(employeeId,employee.name,'تعطيل موظف',null,'تم تعطيل الموظف').catch(()=>{});
-  if(isAdmin()) loadAccountProfiles();
-  showToast('تم تعطيل الموظف');
-  return;
- }
-
- if(!isAdmin()) return showToast('الحذف النهائي متاح للمسؤول فقط');
- if(!confirm(`سيتم حذف الموظف ${employee.name} نهائياً مع حسابه وجميع سجلاته. لا يمكن التراجع. هل تريد المتابعة؟`)) return;
-
- showToast('جارٍ حذف الموظف نهائياً...');
-
- const {data,error}=await supabaseClient.functions.invoke('manage-employee-account',{
-  body:{
-   action:'delete_employee',
-   employee_id:employeeId,
-   confirm_delete:true
-  }
- });
-
- console.log('delete_employee response:',{data,error});
-
- if(error || data?.error){
-  const message=data?.error || error?.message || 'تعذر حذف الموظف';
-  console.error('Permanent delete error:',error||data);
-  showToast(message);
-  alert('فشل حذف الموظف:\n'+message);
-  return;
- }
-
- allEmployeesList=allEmployeesList.filter(e=>Number(e.id)!==Number(employeeId));
- employeesList=employeesList.filter(e=>Number(e.id)!==Number(employeeId));
- attendanceList=attendanceList.filter(x=>Number(x.employee_id)!==Number(employeeId));
- breaksList=breaksList.filter(x=>Number(x.employee_id)!==Number(employeeId));
- permissionRequests=permissionRequests.filter(x=>Number(x.employee_id)!==Number(employeeId));
-
- populateEmployeeSelects();
- renderTable();
- updateStats();
- if(isAdmin()) await loadAccountProfiles();
- await loadManagementLogs();
- await loadActivityLogs();
-
- showToast('تم حذف الموظف وجميع سجلاته نهائياً');
-}
-
-
-
-/* =========================================================
-   RESET BREAKS
-========================================================= */
-
-function getTodayRange(){
- const now=new Date();
- const start=new Date(now.getFullYear(),now.getMonth(),now.getDate(),0,0,0,0);
- const end=new Date(now.getFullYear(),now.getMonth(),now.getDate()+1,0,0,0,0);
- return {start:start.toISOString(),end:end.toISOString()};
-}
-
-async function resetEmployeeBreaks(employeeId){
- if(!isManagement()) return showToast('ليس لديك صلاحية تصفير الاستراحات');
- const employee=allEmployeesList.find(e=>Number(e.id)===Number(employeeId));
  if(!employee) return;
- const active=getActiveBreak(employeeId);
- if(active){
-  return showToast('يجب إنهاء الاستراحة الحالية أولاً');
- }
- if(!confirm(`هل تريد تصفير جميع استراحات ${employee.name} لهذا اليوم؟`)) return;
- const {start,end}=getTodayRange();
- const {error}=await supabaseClient.from('breaks').delete()
-  .eq('employee_id',employeeId)
-  .gte('start_time',start)
-  .lt('start_time',end);
- if(error){
-  console.error(error);
-  return showToast('تعذر تصفير الاستراحات');
- }
- breaksList=breaksList.filter(b=>!(Number(b.employee_id)===Number(employeeId) && new Date(b.start_time)>=new Date(start) && new Date(b.start_time)<new Date(end)));
- renderTable(); updateStats();
- writeManagementLog('تصفير الاستراحات',employeeId,employee.name,'تم تصفير جميع استراحات الموظف لهذا اليوم').catch(()=>{});
- writeActivity(employeeId,employee.name,'تصفير الاستراحات',null,'تم تصفير جميع استراحات الموظف لهذا اليوم').catch(()=>{});
- showToast('تم تصفير استراحات الموظف');
+ const msg=softOnly?`هل تريد تعطيل الموظف ${employee.name}؟`:`سيتم إخفاء الموظف من القوائم مع إبقاء سجلاته القديمة. هل تريد المتابعة؟`;
+ if(!confirm(msg)) return;
+ const {error}=await supabaseClient.from('employees').update({active:false}).eq('id',employeeId);
+ if(error) return showToast('تعذر تعطيل الموظف');
+ employee.active=false; employeesList=employeesList.filter(e=>Number(e.id)!==Number(employeeId));
+ populateEmployeeSelects(); renderTable(); updateStats();
+ writeManagementLog(softOnly?'تعطيل موظف':'حذف/إخفاء موظف',employeeId,employee.name,softOnly?'تم تعطيل الموظف':'تم إخفاء الموظف مع إبقاء السجلات').catch(()=>{});
+ writeActivity(employeeId,employee.name,'تعطيل موظف',null,'تم تعطيل الموظف').catch(()=>{});
+ if(isAdmin()) loadAccountProfiles();
+ showToast(softOnly?'تم تعطيل الموظف':'تم إخفاء الموظف');
 }
 
-async function resetAllBreaks(){
- if(!isManagement()) return showToast('ليس لديك صلاحية تصفير الاستراحات');
- if(!confirm('هل تريد تصفير جميع استراحات جميع الموظفين لهذا اليوم؟')) return;
- const {start,end}=getTodayRange();
- const {error}=await supabaseClient.from('breaks').delete()
-  .gte('start_time',start)
-  .lt('start_time',end);
- if(error){
-  console.error(error);
-  return showToast('تعذر تصفير الاستراحات');
- }
- breaksList=breaksList.filter(b=>!(new Date(b.start_time)>=new Date(start) && new Date(b.start_time)<new Date(end)));
- renderTable(); updateStats();
- writeManagementLog('تصفير استراحات الجميع',null,'جميع الموظفين','تم تصفير جميع استراحات اليوم').catch(()=>{});
- showToast('تم تصفير استراحات جميع الموظفين');
-}
+
 
 /* =========================================================
    STATS
@@ -2976,8 +2911,6 @@ function subscribeRealtime(){
    .on('postgres_changes',{event:'*',schema:'public',table:'breaks'},()=>{loadTodayBreaks().then(()=>{renderTable();updateStats();});})
    .on('postgres_changes',{event:'*',schema:'public',table:'employees'},()=>{loadEmployees().then(()=>{populateEmployeeSelects();renderTable();updateStats();if(isAdmin())loadAccountProfiles();});})
    .on('postgres_changes',{event:'*',schema:'public',table:'permission_requests'},()=>{loadPermissionRequests().then(renderPermissionRequests);})
-   .on('postgres_changes',{event:'*',schema:'public',table:'activity_logs'},()=>{loadActivityLogs();})
-   .on('postgres_changes',{event:'*',schema:'public',table:'management_logs'},()=>{loadManagementLogs();})
    .subscribe();
  }catch(e){ console.warn('Realtime unavailable',e); }
 }
