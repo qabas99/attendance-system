@@ -597,6 +597,22 @@ tbody tr:last-child td{border-bottom:0}
    <input id="permissionNote" placeholder="الملاحظة">
    <button class="btn-purple" onclick="submitPermissionRequest()">إرسال الطلب</button>
   </div>
+  <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+   <button
+    class="btn-red management-only"
+    onclick="deleteTodayPermissionRequests()"
+   >
+    🗑️ حذف طلبات اليوم
+   </button>
+
+   <button
+    class="btn-dark management-only"
+    onclick="deleteAllPermissionRequests()"
+   >
+    🗑️ حذف كل الطلبات
+   </button>
+  </div>
+
   <div class="table-wrap"><table><thead><tr><th>الموظف</th><th>النوع</th><th>الملاحظة</th><th>التاريخ</th><th>الحالة</th><th>الإجراء</th></tr></thead><tbody id="permissionRequestsBody"><tr><td colspan="6">لا توجد طلبات أذونات</td></tr></tbody></table></div>
  </div>
 
@@ -3076,6 +3092,101 @@ function renderPermissionRequests(){
   return `<tr><td>${esc(r.employee_name||e?.name||'—')}</td><td>${esc(r.request_type||'إذن')}</td><td>${esc(r.note||'—')}</td><td>${formatDate(r.created_at)}</td><td><span class="badge ${cls}">${label}</span></td><td><div class="actions">${actions}</div></td></tr>`;
  }).join('');
 }
+
+async function deleteTodayPermissionRequests(){
+
+ if(!isManagement())
+  return;
+
+ if(!confirm('هل تريد حذف جميع طلبات الأذونات الخاصة باليوم الحالي؟'))
+  return;
+
+ const now = new Date();
+
+ const start = new Date(
+  now.getFullYear(),
+  now.getMonth(),
+  now.getDate(),
+  0,0,0,0
+ );
+
+ const end = new Date(
+  now.getFullYear(),
+  now.getMonth(),
+  now.getDate()+1,
+  0,0,0,0
+ );
+
+ const {
+  error
+ } =
+ await supabaseClient
+  .from('permission_requests')
+  .delete()
+  .gte('created_at',start.toISOString())
+  .lt('created_at',end.toISOString());
+
+ if(error){
+
+  console.error(
+   'Delete today permission requests error:',
+   error
+  );
+
+  showToast(
+   'تعذر حذف طلبات اليوم'
+  );
+
+  return;
+ }
+
+ await loadPermissionRequests();
+ renderPermissionRequests();
+
+ showToast(
+  'تم حذف طلبات الأذونات الخاصة باليوم'
+ );
+}
+
+
+async function deleteAllPermissionRequests(){
+
+ if(!isManagement())
+  return;
+
+ if(!confirm('⚠️ تحذير: هل أنت متأكد من حذف جميع طلبات الأذونات لجميع الأيام؟ لا يمكن التراجع عن هذا الإجراء.'))
+  return;
+
+ const {
+  error
+ } =
+ await supabaseClient
+  .from('permission_requests')
+  .delete()
+  .not('id','is',null);
+
+ if(error){
+
+  console.error(
+   'Delete all permission requests error:',
+   error
+  );
+
+  showToast(
+   'تعذر حذف جميع طلبات الأذونات'
+  );
+
+  return;
+ }
+
+ await loadPermissionRequests();
+ renderPermissionRequests();
+
+ showToast(
+  'تم حذف جميع طلبات الأذونات'
+ );
+}
+
 
 async function submitPermissionRequest(){
  if(currentProfile?.role!=='employee' || !currentProfile.employee_id) return;
