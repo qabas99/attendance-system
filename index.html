@@ -175,7 +175,7 @@ button:disabled{
 
 table{
  width:100%;
- min-width:1050px;
+ min-width:950px;
  border-collapse:separate;
  border-spacing:0;
 }
@@ -508,13 +508,6 @@ tbody tr:last-child td{border-bottom:0}
     إضافة موظف
    </button>
 
-   <button
-    class="btn-purple management-only"
-    onclick="openCreateAccountModal()"
-   >
-    إضافة موظف + حساب دخول
-   </button>
-
   </div>
  </div>
 
@@ -575,15 +568,24 @@ tbody tr:last-child td{border-bottom:0}
 
   <div class="report-controls">
 
-   <input type="date" id="reportFrom">
+   <input
+    type="date"
+    id="reportFrom"
+   >
 
-   <input type="date" id="reportTo">
+   <input
+    type="date"
+    id="reportTo"
+   >
 
    <select id="reportEmployee">
     <option value="">كل الموظفين</option>
    </select>
 
-   <button class="btn-blue" onclick="generateWeeklyReport()">
+   <button
+    class="btn-blue"
+    onclick="generateWeeklyReport()"
+   >
     إنشاء التقرير
    </button>
 
@@ -591,15 +593,24 @@ tbody tr:last-child td{border-bottom:0}
 
   <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
 
-   <button class="btn-green" onclick="setCurrentWeek()">
+   <button
+    class="btn-green"
+    onclick="setCurrentWeek()"
+   >
     هذا الأسبوع
    </button>
 
-   <button class="btn-dark" onclick="exportWeeklyCSV()">
+   <button
+    class="btn-dark"
+    onclick="exportWeeklyCSV()"
+   >
     تصدير CSV
    </button>
 
-   <button class="btn-purple" onclick="printWeeklyReport()">
+   <button
+    class="btn-purple"
+    onclick="printWeeklyReport()"
+   >
     طباعة / PDF
    </button>
 
@@ -620,7 +631,10 @@ tbody tr:last-child td{border-bottom:0}
     <option value="">كل الموظفين</option>
    </select>
 
-   <button class="btn-blue" onclick="loadManagementLogs()">
+   <button
+    class="btn-blue"
+    onclick="loadManagementLogs()"
+   >
     تحديث السجل
    </button>
 
@@ -675,67 +689,6 @@ tbody tr:last-child td{border-bottom:0}
 
 <div id="toast"></div>
 
-<!-- نافذة إنشاء حساب موظف -->
-<div id="createAccountModal" class="modal">
-
- <div class="modal-box">
-
-  <h2>إضافة موظف + حساب دخول</h2>
-
-  <p class="muted">
-   أنشئ الموظف وحسابه في خطوة واحدة.
-   سيستخدم الموظف اسم المستخدم وكلمة المرور للدخول.
-  </p>
-
-  <label>اسم الموظف</label>
-
-  <input
-   id="newEmployeeName"
-   type="text"
-   placeholder="مثال: أحمد محمد"
-   style="width:100%;margin-top:7px"
-  >
-
-  <label style="display:block;margin-top:12px">
-   اسم المستخدم
-  </label>
-
-  <input
-   id="newEmployeeUsername"
-   type="text"
-   placeholder="مثال: ahmed2"
-   autocomplete="off"
-   style="width:100%;margin-top:7px"
-  >
-
-  <label style="display:block;margin-top:12px">
-   كلمة المرور
-  </label>
-
-  <input
-   id="newEmployeePassword"
-   type="password"
-   placeholder="6 أحرف أو أكثر"
-   autocomplete="new-password"
-   style="width:100%;margin-top:7px"
-  >
-
-  <div class="modal-actions">
-
-   <button class="btn-dark" onclick="closeCreateAccountModal()">
-    إلغاء
-   </button>
-
-   <button class="btn-purple" onclick="createEmployeeAccount()">
-    إنشاء الحساب
-   </button>
-
-  </div>
-
- </div>
-
-</div>
-
 <!-- نافذة تعديل الالتزام -->
 <div id="complianceModal" class="modal">
 
@@ -770,18 +723,23 @@ tbody tr:last-child td{border-bottom:0}
 
   <div class="modal-actions">
 
-   <button class="btn-dark" onclick="closeComplianceModal()">
+   <button
+    class="btn-dark"
+    onclick="closeComplianceModal()"
+   >
     إلغاء
    </button>
 
-   <button class="btn-green" onclick="saveCompliance()">
+   <button
+    class="btn-green"
+    onclick="saveCompliance()"
+   >
     حفظ التعديل
    </button>
 
   </div>
 
  </div>
-
 </div>
 
 <!-- شاشة الدخول -->
@@ -824,11 +782,9 @@ tbody tr:last-child td{border-bottom:0}
   ></div>
 
  </div>
-
 </div>
 
 <script>
-
 /* =========================================================
    SUPABASE
 ========================================================= */
@@ -1060,10 +1016,21 @@ async function login(){
 
  }
 
- const email =
-  username === 'admin'
-   ? 'qabasimad0@gmail.com'
-   : `${username}@attendance.local`;
+ // البريد الداخلي مخفي عن المستخدم؛ الدخول يكون بالـUsername فقط.
+ const internalEmails = {
+  ahmed: 'ahmed@attendance.local',
+  ali: 'ali@attendance.local',
+  mohammedr: 'mohammedr@attendance.local',
+  mohammedi: 'mohammedi@attendance.local',
+  admin: 'qabasimad0@gmail.com'
+ };
+
+ const email = internalEmails[username];
+
+ if(!email){
+  errorBox.innerText = 'اسم المستخدم غير موجود';
+  return;
+ }
 
  const {
   data,
@@ -1151,11 +1118,9 @@ async function initializeApplication(){
 
   await loadProfile();
 
-  const loginScreen =
-   document.getElementById('loginScreen');
-
-  if(loginScreen)
-   loginScreen.remove();
+  document
+   .getElementById('loginScreen')
+   .remove();
 
   renderUserBar();
 
@@ -1163,16 +1128,10 @@ async function initializeApplication(){
 
   await loadAllData();
 
-  await loadActivityLogs();
-
   if(isManagement()){
-
    setCurrentWeek();
-
    await generateWeeklyReport();
-
    await loadManagementLogs();
-
   }
 
  }catch(error){
@@ -1202,23 +1161,15 @@ function renderUserBar(){
  bar.className='userbar';
 
  bar.innerHTML=`
-
   <div class="userbar-inner">
 
    <div>
-
     المستخدم:
-    <b>
-     ${esc(
-      currentProfile.username ||
-      currentProfile.full_name
-     )}
-    </b>
+    <b>${esc(currentProfile.username || currentProfile.full_name)}</b>
 
     <span class="badge badge-blue">
      ${esc(currentProfile.role)}
     </span>
-
    </div>
 
    <button
@@ -1230,11 +1181,7 @@ function renderUserBar(){
 
   </div>
 
-  <div
-   id="roleNote"
-   class="muted"
-   style="margin-top:6px"
-  ></div>
+   <div id="roleNote" class="muted" style="margin-top:6px"></div>
  `;
 
 }
@@ -1247,51 +1194,38 @@ function renderUserBar(){
 function applyPermissions(){
 
  const management = isManagement();
-
- const employee =
-  currentProfile?.role === 'employee';
-
- const admin =
-  isAdmin();
+ const employee = currentProfile?.role === 'employee';
+ const admin = isAdmin();
 
  document
-  .querySelectorAll(
-   '.management-only, .management-section'
-  )
+  .querySelectorAll('.management-only, .management-section')
   .forEach(el=>{
-   el.style.display =
-    management ? '' : 'none';
+   el.style.display = management ? '' : 'none';
   });
 
  document
   .querySelectorAll('.employee-hidden')
   .forEach(el=>{
-   el.style.display =
-    employee ? 'none' : '';
+   el.style.display = employee ? 'none' : '';
   });
 
  document
   .querySelectorAll('.admin-only')
   .forEach(el=>{
-   el.style.display =
-    admin ? '' : 'none';
+   el.style.display = admin ? '' : 'none';
   });
 
- const roleNote =
-  document.getElementById('roleNote');
-
+ const roleNote = document.getElementById('roleNote');
  if(roleNote){
-
-  roleNote.innerText =
-   employee
-    ? 'وضع الموظف: يمكنك تسجيل حضورك وإدارة بريكاتك ووقتها فقط.'
-    : admin
-     ? 'وضع Admin: جميع صلاحيات الإدارة متاحة.'
-     : 'وضع المدير: صلاحيات الإدارة والتقارير متاحة.';
-
+  roleNote.innerText = employee
+   ? 'وضع الموظف: يمكنك تسجيل حضورك وإدارة بريكاتك ووقتها فقط.'
+   : admin
+    ? 'وضع Admin: جميع صلاحيات الإدارة متاحة.'
+    : 'وضع المدير: صلاحيات الإدارة والتقارير متاحة.';
  }
 
 }
+
 
 
 /* =========================================================
@@ -1307,9 +1241,7 @@ async function loadAllData(){
  ]);
 
  populateEmployeeSelects();
-
  renderTable();
-
  updateStats();
 
 }
@@ -1376,28 +1308,19 @@ function populateEmployeeSelects(){
 
  employeesList.forEach(emp=>{
 
-  const o1 =
-   document.createElement('option');
-
+  const o1=document.createElement('option');
   o1.value=emp.name;
   o1.textContent=emp.name;
-
   preset.appendChild(o1);
 
-  const o2 =
-   document.createElement('option');
-
+  const o2=document.createElement('option');
   o2.value=emp.id;
   o2.textContent=emp.name;
-
   report.appendChild(o2);
 
-  const o3 =
-   document.createElement('option');
-
+  const o3=document.createElement('option');
   o3.value=emp.id;
   o3.textContent=emp.name;
-
   management.appendChild(o3);
 
  });
@@ -1413,306 +1336,6 @@ function selectPreset(value){
  document.getElementById(
   'employeeName'
  ).value=value;
-
-}
-
-
-/* =========================================================
-   CREATE EMPLOYEE + LOGIN ACCOUNT
-========================================================= */
-
-function openCreateAccountModal(){
-
- if(!isManagement()){
-
-  showToast(
-   'ليس لديك صلاحية إضافة موظف'
-  );
-
-  return;
-
- }
-
- document.getElementById(
-  'newEmployeeName'
- ).value =
-  document.getElementById(
-   'employeeName'
-  ).value.trim();
-
- document.getElementById(
-  'newEmployeeUsername'
- ).value='';
-
- document.getElementById(
-  'newEmployeePassword'
- ).value='';
-
- document
-  .getElementById(
-   'createAccountModal'
-  )
-  .classList.add('show');
-
-}
-
-
-function closeCreateAccountModal(){
-
- document
-  .getElementById(
-   'createAccountModal'
-  )
-  .classList.remove('show');
-
-}
-
-
-async function createEmployeeAccount(){
-
- if(!isManagement())
-  return;
-
- const name =
-  document
-   .getElementById(
-    'newEmployeeName'
-   )
-   .value.trim();
-
- const username =
-  document
-   .getElementById(
-    'newEmployeeUsername'
-   )
-   .value.trim()
-   .toLowerCase();
-
- const password =
-  document
-   .getElementById(
-    'newEmployeePassword'
-   )
-   .value;
-
- if(!name || !username || !password){
-
-  showToast(
-   'أدخل اسم الموظف واسم المستخدم وكلمة المرور'
-  );
-
-  return;
-
- }
-
- if(!/^[a-z0-9._-]{3,30}$/.test(username)){
-
-  showToast(
-   'اسم المستخدم يجب أن يكون إنكليزياً، 3 إلى 30 خانة'
-  );
-
-  return;
-
- }
-
- if(password.length<6){
-
-  showToast(
-   'كلمة المرور يجب أن تكون 6 أحرف أو أكثر'
-  );
-
-  return;
-
- }
-
- if(
-  employeesList.some(
-   e =>
-    e.name.trim().toLowerCase() ===
-    name.toLowerCase()
-  )
- ){
-
-  showToast(
-   'الموظف موجود بالفعل'
-  );
-
-  return;
-
- }
-
- const button =
-  document.querySelector(
-   '#createAccountModal .btn-purple'
-  );
-
- button.disabled=true;
-
- try{
-
-  const {
-   data,
-   error
-  } =
-  await supabaseClient
-   .functions
-   .invoke(
-    'create-employee-user',
-    {
-     body:{
-      name,
-      username,
-      password
-     }
-    }
-   );
-
-  if(error)
-   throw new Error(
-    error.message ||
-    'تعذر إنشاء الحساب'
-   );
-
-  if(data?.error)
-   throw new Error(data.error);
-
-  closeCreateAccountModal();
-
-  document.getElementById(
-   'employeeName'
-  ).value='';
-
-  await loadAllData();
-
-  showToast(
-   `تم إنشاء الموظف بنجاح — Username: ${username}`
-  );
-
- }catch(error){
-
-  console.error(error);
-
-  showToast(
-   error.message ||
-   'تعذر إنشاء الحساب'
-  );
-
- }finally{
-
-  button.disabled=false;
-
- }
-
-}
-
-
-/* =========================================================
-   تغيير باسورد الموظف
-========================================================= */
-
-async function changeEmployeePassword(employeeId){
-
- if(!isManagement()){
-
-  showToast(
-   'ليس لديك صلاحية تغيير كلمة المرور'
-  );
-
-  return;
-
- }
-
- const employee =
-  employeesList.find(
-   e =>
-    Number(e.id) ===
-    Number(employeeId)
-  );
-
- if(!employee){
-
-  showToast(
-   'الموظف غير موجود'
-  );
-
-  return;
-
- }
-
- const password =
-  prompt(
-   `أدخل كلمة المرور الجديدة للموظف:\n${employee.name}`
-  );
-
- if(password === null)
-  return;
-
- const newPassword =
-  password.trim();
-
- if(newPassword.length < 6){
-
-  showToast(
-   'كلمة المرور يجب أن تكون 6 أحرف أو أكثر'
-  );
-
-  return;
-
- }
-
- try{
-
-  const {
-   data,
-   error
-  } =
-  await supabaseClient
-   .functions
-   .invoke(
-    'change-employee-password',
-    {
-     body:{
-      employee_id:employeeId,
-      password:newPassword
-     }
-    }
-   );
-
-  if(error)
-   throw new Error(
-    error.message ||
-    'تعذر تغيير كلمة المرور'
-   );
-
-  if(data?.error)
-   throw new Error(data.error);
-
-  await writeManagementLog(
-   'تغيير كلمة المرور',
-   employeeId,
-   employee.name,
-   'تم تغيير كلمة مرور حساب الموظف'
-  );
-
-  showToast(
-   '✅ تم تغيير كلمة المرور بنجاح'
-  );
-
-  await loadManagementLogs();
-
- }catch(error){
-
-  console.error(error);
-
-  showToast(
-   '❌ ' +
-   (
-    error.message ||
-    'تعذر تغيير كلمة المرور'
-   )
-  );
-
- }
 
 }
 
@@ -1738,8 +1361,7 @@ async function addEmployee(){
    'employeeName'
   );
 
- const name =
-  input.value.trim();
+ const name=input.value.trim();
 
  if(!name){
 
@@ -1916,25 +1538,15 @@ function getActiveBreak(employeeId){
 
 async function checkIn(employeeId){
 
- if(
-  currentProfile?.role === 'employee' &&
-  Number(employeeId) !==
-  Number(currentProfile.employee_id)
- ){
-
-  showToast(
-   'لا يمكنك تنفيذ إجراء على موظف آخر'
-  );
-
+ if(currentProfile?.role === 'employee' && Number(employeeId) !== Number(currentProfile.employee_id)){
+  showToast('لا يمكنك تنفيذ إجراء على موظف آخر');
   return;
-
  }
+
 
  const employee =
   employeesList.find(
-   e =>
-    Number(e.id) ===
-    Number(employeeId)
+   e=>Number(e.id)===Number(employeeId)
   );
 
  if(!employee)
@@ -2022,25 +1634,15 @@ async function checkIn(employeeId){
 
 async function checkOut(employeeId){
 
- if(
-  currentProfile?.role === 'employee' &&
-  Number(employeeId) !==
-  Number(currentProfile.employee_id)
- ){
-
-  showToast(
-   'لا يمكنك تنفيذ إجراء على موظف آخر'
-  );
-
+ if(currentProfile?.role === 'employee' && Number(employeeId) !== Number(currentProfile.employee_id)){
+  showToast('لا يمكنك تنفيذ إجراء على موظف آخر');
   return;
-
  }
+
 
  const employee =
   employeesList.find(
-   e =>
-    Number(e.id) ===
-    Number(employeeId)
+   e=>Number(e.id)===Number(employeeId)
   );
 
  const attendance =
@@ -2123,25 +1725,15 @@ async function startBreak(
  breakType
 ){
 
- if(
-  currentProfile?.role === 'employee' &&
-  Number(employeeId) !==
-  Number(currentProfile.employee_id)
- ){
-
-  showToast(
-   'لا يمكنك تنفيذ إجراء على موظف آخر'
-  );
-
+ if(currentProfile?.role === 'employee' && Number(employeeId) !== Number(currentProfile.employee_id)){
+  showToast('لا يمكنك تنفيذ إجراء على موظف آخر');
   return;
-
  }
+
 
  const employee =
   employeesList.find(
-   e =>
-    Number(e.id) ===
-    Number(employeeId)
+   e=>Number(e.id)===Number(employeeId)
   );
 
  if(!employee)
@@ -2170,42 +1762,6 @@ async function startBreak(
 
  }
 
- /*
-  منع البريك العادي إذا شخص آخر عنده بريك.
-  الاستراحة المصرح بها هي الاستثناء.
- */
-
- if(breakType !== 'authorized'){
-
-  const anotherActiveBreak =
-   breaksList.find(
-    b =>
-     !b.end_time &&
-     Number(b.employee_id) !==
-     Number(employeeId)
-   );
-
-  if(anotherActiveBreak){
-
-   const otherEmployee =
-    employeesList.find(
-     e =>
-      Number(e.id) ===
-      Number(anotherActiveBreak.employee_id)
-    );
-
-   showToast(
-    `⚠️ الاستراحة مرفوضة — الموظف ${
-     otherEmployee?.name || ''
-    } لديه استراحة حالياً`
-   );
-
-   return;
-
-  }
-
- }
-
  const previous =
   breaksList.filter(
    b =>
@@ -2214,11 +1770,9 @@ async function startBreak(
   );
 
  if(
-  breakType !== 'authorized' &&
+  breakType!=='authorized' &&
   previous.some(
-   b =>
-    b.break_type ===
-    breakType
+   b=>b.break_type===breakType
   )
  ){
 
@@ -2233,14 +1787,9 @@ async function startBreak(
  if(breakType==='smoking'){
 
   const cooldown =
-   getSmokingCooldown(
-    employeeId
-   );
+   getSmokingCooldown(employeeId);
 
-  if(
-   cooldown !== null &&
-   cooldown > 0
-  ){
+  if(cooldown!==null && cooldown>0){
 
    showToast(
     `تبقى ${cooldown} دقيقة قبل استراحة التدخين التالية`
@@ -2275,8 +1824,7 @@ async function startBreak(
   if(value===null)
    return;
 
-  allowedMinutes =
-   Number(value);
+  allowedMinutes=Number(value);
 
   if(
    !Number.isFinite(allowedMinutes) ||
@@ -2295,9 +1843,7 @@ async function startBreak(
  }else{
 
   allowedMinutes =
-   BREAK_RULES[
-    breakType
-   ].minutes;
+   BREAK_RULES[breakType].minutes;
 
  }
 
@@ -2342,9 +1888,7 @@ async function startBreak(
   allowedMinutes+' دقيقة',
   breakType==='authorized'
    ? 'استراحة مصرح بها'
-   : BREAK_RULES[
-      breakType
-     ].name
+   : BREAK_RULES[breakType].name
  );
 
  await loadAllData();
@@ -2364,33 +1908,20 @@ async function finishBreak(breakId){
 
  const active =
   breaksList.find(
-   b =>
-    Number(b.id) ===
-    Number(breakId)
+   b=>Number(b.id)===Number(breakId)
   );
 
  if(!active)
   return;
 
- if(
-  currentProfile?.role === 'employee' &&
-  Number(active.employee_id) !==
-  Number(currentProfile.employee_id)
- ){
-
-  showToast(
-   'لا يمكنك إنهاء استراحة موظف آخر'
-  );
-
+ if(currentProfile?.role === 'employee' && Number(active.employee_id) !== Number(currentProfile.employee_id)){
+  showToast('لا يمكنك إنهاء استراحة موظف آخر');
   return;
-
  }
 
  const employee =
   employeesList.find(
-   e =>
-    Number(e.id) ===
-    Number(active.employee_id)
+   e=>Number(e.id)===Number(active.employee_id)
   );
 
  const now =
@@ -2406,9 +1937,7 @@ async function finishBreak(breakId){
   Math.max(
    0,
    actual -
-   Number(
-    active.allowed_minutes || 0
-   )
+   Number(active.allowed_minutes||0)
   );
 
  const {
@@ -2469,15 +1998,13 @@ function getSmokingCooldown(employeeId){
   breaksList
    .filter(
     b =>
-     Number(b.employee_id) ===
-     Number(employeeId) &&
-     b.break_type ===
-     'smoking' &&
+     Number(b.employee_id)===Number(employeeId) &&
+     b.break_type==='smoking' &&
      b.end_time
    )
    .sort(
     (a,b)=>
-     new Date(b.end_time) -
+     new Date(b.end_time)-
      new Date(a.end_time)
    )[0];
 
@@ -2508,9 +2035,7 @@ function complianceScore(employee){
   employee.compliance_override !== null &&
   employee.compliance_override !== undefined &&
   Number.isFinite(
-   Number(
-    employee.compliance_override
-   )
+   Number(employee.compliance_override)
   )
  ){
 
@@ -2519,9 +2044,7 @@ function complianceScore(employee){
    Math.min(
     100,
     Math.round(
-     Number(
-      employee.compliance_override
-     )
+     Number(employee.compliance_override)
     )
    )
   );
@@ -2532,23 +2055,18 @@ function complianceScore(employee){
   breaksList
    .filter(
     b =>
-     Number(b.employee_id) ===
+     Number(b.employee_id)===
      Number(employee.id)
    )
    .reduce(
     (sum,b)=>
-     sum+
-     Number(
-      b.overage_minutes||0
-     ),
+     sum+Number(b.overage_minutes||0),
     0
    );
 
  return Math.max(
   0,
-  Math.round(
-   100-totalOverage
-  )
+  Math.round(100-totalOverage)
  );
 
 }
@@ -2568,9 +2086,7 @@ function openComplianceModal(employeeId){
 
  const employee =
   employeesList.find(
-   e =>
-    Number(e.id) ===
-    Number(employeeId)
+   e=>Number(e.id)===Number(employeeId)
   );
 
  if(!employee)
@@ -2634,9 +2150,7 @@ async function saveCompliance(){
 
  const employee =
   employeesList.find(
-   e =>
-    Number(e.id) ===
-    Number(employeeId)
+   e=>Number(e.id)===Number(employeeId)
   );
 
  if(!employee)
@@ -2768,24 +2282,16 @@ function renderTable(){
  employeesList.map(employee=>{
 
   const attendance =
-   getAttendance(
-    employee.id
-   );
+   getAttendance(employee.id);
 
   const activeBreak =
-   getActiveBreak(
-    employee.id
-   );
+   getActiveBreak(employee.id);
 
   const cooldown =
-   getSmokingCooldown(
-    employee.id
-   );
+   getSmokingCooldown(employee.id);
 
   const compliance =
-   complianceScore(
-    employee
-   );
+   complianceScore(employee);
 
   let status='';
 
@@ -2855,136 +2361,99 @@ function renderTable(){
 
   let actions='';
 
-  /*
-   الموظف العادي يشاهد ويستخدم صفه فقط.
-   الإدارة تستطيع تنفيذ الإجراءات على جميع الموظفين.
-  */
+  if(!attendance?.present){
 
-  const canOperate =
-   isManagement() ||
-   (
-    currentProfile?.role === 'employee' &&
-    Number(
-     currentProfile.employee_id
-    ) === Number(employee.id)
-   );
+   actions+=`
+    <button
+     class="btn-green"
+     onclick="checkIn(${employee.id})"
+    >
+     حضور
+    </button>
+   `;
 
-  if(canOperate){
+  }else if(!activeBreak){
 
-   if(!attendance?.present){
+   actions+=`
+    <button
+     class="btn-orange"
+     onclick="startBreak(${employee.id},'smoking')"
+    >
+     تدخين
+    </button>
 
-    actions+=`
-     <button
-      class="btn-green"
-      onclick="checkIn(${employee.id})"
-     >
-      حضور
-     </button>
-    `;
+    <button
+     class="btn-blue"
+     onclick="startBreak(${employee.id},'dinner')"
+    >
+     عشاء
+    </button>
 
-   }else if(!activeBreak){
+    <button
+     class="btn-red"
+     onclick="startBreak(${employee.id},'emergency')"
+    >
+     طارئة
+    </button>
+   `;
 
-    actions+=`
-     <button
-      class="btn-orange"
-      onclick="startBreak(${employee.id},'smoking')"
-     >
-      تدخين
-     </button>
-
-     <button
-      class="btn-blue"
-      onclick="startBreak(${employee.id},'dinner')"
-     >
-      عشاء
-     </button>
-
-     <button
-      class="btn-red"
-      onclick="startBreak(${employee.id},'emergency')"
-     >
-      طارئة
-     </button>
-    `;
-
-    if(isManagement()){
-
-     actions+=`
-      <button
-       class="btn-dark"
-       onclick="startBreak(${employee.id},'authorized')"
-      >
-       مصرح بها
-      </button>
-     `;
-
-    }
+   if(isManagement()){
 
     actions+=`
      <button
-      class="btn-red"
-      onclick="checkOut(${employee.id})"
+      class="btn-dark"
+      onclick="startBreak(${employee.id},'authorized')"
      >
-      خروج
-     </button>
-    `;
-
-   }else{
-
-    actions+=`
-     <button
-      class="btn-green"
-      onclick="finishBreak(${activeBreak.id})"
-     >
-      عودة
+      مصرح بها
      </button>
     `;
 
    }
 
-  }
+   actions+=`
+    <button
+     class="btn-red"
+     onclick="checkOut(${employee.id})"
+    >
+     خروج
+    </button>
+   `;
 
-  /*
-   أزرار الإدارة
-  */
+  }else{
+
+   actions+=`
+    <button
+     class="btn-green"
+     onclick="finishBreak(${activeBreak.id})"
+    >
+     عودة
+    </button>
+   `;
+
+  }
 
   if(isManagement()){
 
    actions+=`
-
-    <button
-     class="btn-purple"
-     onclick="changeEmployeePassword(${employee.id})"
-    >
-     🔑 الباسورد
-    </button>
-
     <button
      class="btn-red"
      onclick="deactivateEmployee(${employee.id})"
     >
      تعطيل
     </button>
-
    `;
 
   }
 
-  /*
-   زر الالتزام Admin فقط
-  */
-
   if(isAdmin()){
 
    actions+=`
-
     <button
      class="btn-purple"
      onclick="openComplianceModal(${employee.id})"
     >
      الالتزام
     </button>
-
    `;
 
   }
@@ -2993,9 +2462,7 @@ function renderTable(){
    <tr>
 
     <td>
-     <b>
-      ${esc(employee.name)}
-     </b>
+     <b>${esc(employee.name)}</b>
     </td>
 
     <td class="status">
@@ -3005,9 +2472,7 @@ function renderTable(){
     <td>
      ${
       attendance?.check_in
-       ? formatTime(
-          attendance.check_in
-         )
+       ? formatTime(attendance.check_in)
        : '—'
      }
     </td>
@@ -3033,19 +2498,15 @@ function renderTable(){
      </b>
 
      <div class="progress">
-      <div
-       style="width:${compliance}%"
-      ></div>
+      <div style="width:${compliance}%"></div>
      </div>
 
     </td>
 
     <td>
-
      <div class="actions">
       ${actions}
      </div>
-
     </td>
 
    </tr>
@@ -3067,9 +2528,7 @@ async function deactivateEmployee(employeeId){
 
  const employee =
   employeesList.find(
-   e =>
-    Number(e.id) ===
-    Number(employeeId)
+   e=>Number(e.id)===Number(employeeId)
   );
 
  if(!employee)
@@ -3141,28 +2600,21 @@ function updateStats(){
   employeesList.length;
 
  const active =
-  employeesList.filter(
-   employee=>{
+  employeesList.filter(employee=>{
 
-    const a =
-     getAttendance(
-      employee.id
-     );
+   const a =
+    getAttendance(employee.id);
 
-    const b =
-     getActiveBreak(
-      employee.id
-     );
+   const b =
+    getActiveBreak(employee.id);
 
-    return a?.present && !b;
+   return a?.present && !b;
 
-   }
-  ).length;
+  }).length;
 
  const breaks =
   employeesList.filter(
-   e =>
-    getActiveBreak(e.id)
+   e=>getActiveBreak(e.id)
   ).length;
 
  const out =
@@ -3197,46 +2649,39 @@ function updateStats(){
 function updateTimers(){
 
  breaksList
-  .filter(
-   b=>!b.end_time
-  )
-  .forEach(
-   activeBreak=>{
+  .filter(b=>!b.end_time)
+  .forEach(activeBreak=>{
 
-    const element =
-     document.getElementById(
-      'breakTimer_' +
-      activeBreak.id
-     );
+   const element =
+    document.getElementById(
+     'breakTimer_'+activeBreak.id
+    );
 
-    if(!element)
-     return;
+   if(!element)
+    return;
 
-    const seconds =
-     Math.floor(
-      (
-       Date.now() -
-       new Date(
-        activeBreak.start_time
-       ).getTime()
-      )/1000
-     );
+   const seconds =
+    Math.floor(
+     (
+      Date.now() -
+      new Date(
+       activeBreak.start_time
+      ).getTime()
+     )/1000
+    );
 
-    const min =
-     Math.floor(
-      seconds/60
-     );
+   const min =
+    Math.floor(seconds/60);
 
-    const sec =
-     seconds%60;
+   const sec =
+    seconds%60;
 
-    element.innerText =
-     String(min).padStart(2,'0')+
-     ':'+
-     String(sec).padStart(2,'0');
+   element.innerText =
+    String(min).padStart(2,'0')+
+    ':'+
+    String(sec).padStart(2,'0');
 
-   }
-  );
+  });
 
 }
 
@@ -3320,45 +2765,15 @@ async function loadActivityLogs(){
  }
 
  tbody.innerHTML =
-  data.map(
-   row=>`
-
-    <tr>
-
-     <td>
-      ${formatDate(
-       row.created_at
-      )}
-     </td>
-
-     <td>
-      ${esc(
-       row.employee_name||'—'
-      )}
-     </td>
-
-     <td>
-      ${esc(
-       row.action||'—'
-      )}
-     </td>
-
-     <td>
-      ${esc(
-       row.duration||'—'
-      )}
-     </td>
-
-     <td>
-      ${esc(
-       row.details||'—'
-      )}
-     </td>
-
-    </tr>
-
-   `
-  ).join('');
+  data.map(row=>`
+   <tr>
+    <td>${formatDate(row.created_at)}</td>
+    <td>${esc(row.employee_name||'—')}</td>
+    <td>${esc(row.action||'—')}</td>
+    <td>${esc(row.duration||'—')}</td>
+    <td>${esc(row.details||'—')}</td>
+   </tr>
+  `).join('');
 
 }
 
@@ -3384,10 +2799,8 @@ async function writeManagementLog(
   .from('management_logs')
   .insert({
    action:action,
-   employee_id:
-    employeeId||null,
-   target_name:
-    employeeName||null,
+   employee_id:employeeId||null,
+   target_name:employeeName||null,
    details:details,
    performed_by:
     currentUser?.id||null
@@ -3470,45 +2883,33 @@ async function loadManagementLogs(){
  }
 
  tbody.innerHTML =
-  data.map(
-   row=>`
+  data.map(row=>`
 
-    <tr>
+   <tr>
 
-     <td>
-      ${formatDate(
-       row.created_at
-      )}
-     </td>
+    <td>
+     ${formatDate(row.created_at)}
+    </td>
 
-     <td>
-      ${esc(
-       row.action||'—'
-      )}
-     </td>
+    <td>
+     ${esc(row.action||'—')}
+    </td>
 
-     <td>
-      ${esc(
-       row.target_name||'—'
-      )}
-     </td>
+    <td>
+     ${esc(row.target_name||'—')}
+    </td>
 
-     <td>
-      ${esc(
-       row.details||'—'
-      )}
-     </td>
+    <td>
+     ${esc(row.details||'—')}
+    </td>
 
-     <td>
-      ${esc(
-       row.performed_by||'—'
-      )}
-     </td>
+    <td>
+     ${esc(row.performed_by||'—')}
+    </td>
 
-    </tr>
+   </tr>
 
-   `
-  ).join('');
+  `).join('');
 
 }
 
@@ -3535,9 +2936,7 @@ function setCurrentWeek(){
   d.getDay();
 
  const diff =
-  day===0
-   ? -6
-   : 1-day;
+  day===0 ? -6 : 1-day;
 
  const monday =
   new Date(d);
@@ -3556,16 +2955,12 @@ function setCurrentWeek(){
  document.getElementById(
   'reportFrom'
  ).value =
-  getDateOnly(
-   monday
-  );
+  getDateOnly(monday);
 
  document.getElementById(
   'reportTo'
  ).value =
-  getDateOnly(
-   sunday
-  );
+  getDateOnly(sunday);
 
 }
 
@@ -3614,9 +3009,7 @@ async function generateWeeklyReport(){
 
   employees =
    employees.filter(
-    e =>
-     String(e.id) ===
-     String(employeeFilter)
+    e=>String(e.id)===String(employeeFilter)
    );
 
  }
@@ -3625,7 +3018,7 @@ async function generateWeeklyReport(){
 
   document.getElementById(
    'reportArea'
-  ).innerHTML =
+  ).innerHTML=
    '<p class="muted">لا توجد بيانات.</p>';
 
   return;
@@ -3636,9 +3029,7 @@ async function generateWeeklyReport(){
   from+'T00:00:00';
 
  const endDate =
-  new Date(
-   to+'T23:59:59'
-  );
+  new Date(to+'T23:59:59');
 
  const endISO =
   endDate.toISOString();
@@ -3661,9 +3052,7 @@ async function generateWeeklyReport(){
 
  if(attendanceError){
 
-  console.error(
-   attendanceError
-  );
+  console.error(attendanceError);
 
   showToast(
    'تعذر تحميل بيانات الحضور'
@@ -3691,9 +3080,7 @@ async function generateWeeklyReport(){
 
  if(breakError){
 
-  console.error(
-   breakError
-  );
+  console.error(breakError);
 
   showToast(
    'تعذر تحميل بيانات الاستراحات'
@@ -3704,111 +3091,82 @@ async function generateWeeklyReport(){
  }
 
  weeklyReportRows =
-  employees.map(
-   employee=>{
+  employees.map(employee=>{
 
-    const empAttendance =
-     (attendance||[]).filter(
-      a =>
-       Number(
-        a.employee_id
-       ) ===
-       Number(
-        employee.id
-       )
-     );
+   const empAttendance =
+    (attendance||[]).filter(
+     a =>
+      Number(a.employee_id)===
+      Number(employee.id)
+    );
 
-    const empBreaks =
-     (breaks||[]).filter(
-      b =>
-       Number(
-        b.employee_id
-       ) ===
-       Number(
-        employee.id
-       )
-     );
+   const empBreaks =
+    (breaks||[]).filter(
+     b =>
+      Number(b.employee_id)===
+      Number(employee.id)
+    );
 
-    const presentDays =
-     empAttendance.filter(
-      a=>a.check_in
-     ).length;
+   const presentDays =
+    empAttendance.filter(
+     a=>a.check_in
+    ).length;
 
-    const totalWorkMinutes =
-     empAttendance.reduce(
-      (sum,a)=>
-       sum+
-       minutesBetween(
-        a.check_in,
-        a.check_out
-       ),
-      0
-     );
+   const totalWorkMinutes =
+    empAttendance.reduce(
+     (sum,a)=>
+      sum+
+      minutesBetween(
+       a.check_in,
+       a.check_out
+      ),
+     0
+    );
 
-    const breakMinutes =
-     empBreaks.reduce(
-      (sum,b)=>
-       sum+
-       Number(
-        b.actual_minutes||0
-       ),
-      0
-     );
+   const breakMinutes =
+    empBreaks.reduce(
+     (sum,b)=>
+      sum+
+      Number(b.actual_minutes||0),
+     0
+    );
 
-    const overageMinutes =
-     empBreaks.reduce(
-      (sum,b)=>
-       sum+
-       Number(
-        b.overage_minutes||0
-       ),
-      0
-     );
+   const overageMinutes =
+    empBreaks.reduce(
+     (sum,b)=>
+      sum+
+      Number(b.overage_minutes||0),
+     0
+    );
 
-    const score =
-     employee.compliance_override !== null &&
-     employee.compliance_override !== undefined
-      ? Number(
-         employee.compliance_override
+   const score =
+    employee.compliance_override !== null &&
+    employee.compliance_override !== undefined
+     ? Number(employee.compliance_override)
+     : Math.max(
+        0,
+        Math.round(
+         100-overageMinutes
         )
-      : Math.max(
-         0,
-         Math.round(
-          100-overageMinutes
-         )
-        );
+       );
 
-    return {
+   return {
+    id:employee.id,
+    name:employee.name,
+    presentDays:presentDays,
+    workMinutes:totalWorkMinutes,
+    breakMinutes:breakMinutes,
+    overageMinutes:overageMinutes,
+    compliance:Math.max(
+     0,
+     Math.min(
+      100,
+      Math.round(score)
+     )
+    )
+   };
 
-     id:employee.id,
-
-     name:employee.name,
-
-     presentDays:
-      presentDays,
-
-     workMinutes:
-      totalWorkMinutes,
-
-     breakMinutes:
-      breakMinutes,
-
-     overageMinutes:
-      overageMinutes,
-
-     compliance:
-      Math.max(
-       0,
-       Math.min(
-        100,
-        Math.round(score)
-       )
-      )
-
-    };
-
-   }
-  );
+  });
 
  renderWeeklyReport(
   from,
@@ -3821,14 +3179,10 @@ async function generateWeeklyReport(){
 function minutesToText(minutes){
 
  const m =
-  Number(
-   minutes||0
-  );
+  Number(minutes||0);
 
  const h =
-  Math.floor(
-   m/60
-  );
+  Math.floor(m/60);
 
  const min =
   m%60;
@@ -3841,10 +3195,7 @@ function minutesToText(minutes){
 }
 
 
-function renderWeeklyReport(
- from,
- to
-){
+function renderWeeklyReport(from,to){
 
  const area =
   document.getElementById(
@@ -3853,7 +3204,7 @@ function renderWeeklyReport(
 
  if(!weeklyReportRows.length){
 
-  area.innerHTML =
+  area.innerHTML=
    '<p class="muted">لا توجد بيانات.</p>';
 
   return;
@@ -3862,37 +3213,32 @@ function renderWeeklyReport(
 
  const totalPresent =
   weeklyReportRows.reduce(
-   (s,r)=>
-    s+r.presentDays,
+   (s,r)=>s+r.presentDays,
    0
   );
 
  const totalWork =
   weeklyReportRows.reduce(
-   (s,r)=>
-    s+r.workMinutes,
+   (s,r)=>s+r.workMinutes,
    0
   );
 
  const totalBreak =
   weeklyReportRows.reduce(
-   (s,r)=>
-    s+r.breakMinutes,
+   (s,r)=>s+r.breakMinutes,
    0
   );
 
  const totalOverage =
   weeklyReportRows.reduce(
-   (s,r)=>
-    s+r.overageMinutes,
+   (s,r)=>s+r.overageMinutes,
    0
   );
 
  const averageCompliance =
   Math.round(
    weeklyReportRows.reduce(
-    (s,r)=>
-     s+r.compliance,
+    (s,r)=>s+r.compliance,
     0
    )/
    weeklyReportRows.length
@@ -3919,18 +3265,14 @@ function renderWeeklyReport(
    <div class="summary-box">
     <small>وقت العمل</small>
     <strong>
-     ${minutesToText(
-      totalWork
-     )}
+     ${minutesToText(totalWork)}
     </strong>
    </div>
 
    <div class="summary-box">
     <small>وقت الاستراحات</small>
     <strong>
-     ${minutesToText(
-      totalBreak
-     )}
+     ${minutesToText(totalBreak)}
     </strong>
    </div>
 
@@ -3944,20 +3286,15 @@ function renderWeeklyReport(
   </div>
 
   <div style="margin-bottom:12px">
-
    الفترة:
    <b>${esc(from)}</b>
    إلى
    <b>${esc(to)}</b>
-
    —
-
    إجمالي التجاوز:
-
    <b class="danger">
     ${totalOverage} دقيقة
    </b>
-
   </div>
 
   <div class="table-wrap">
@@ -3965,7 +3302,6 @@ function renderWeeklyReport(
    <table id="weeklyReportTable">
 
     <thead>
-
      <tr>
       <th>الموظف</th>
       <th>أيام الحضور</th>
@@ -3974,77 +3310,61 @@ function renderWeeklyReport(
       <th>التجاوز</th>
       <th>الالتزام</th>
      </tr>
-
     </thead>
 
     <tbody>
 
-     ${weeklyReportRows.map(
-      row=>`
+     ${weeklyReportRows.map(row=>`
 
-       <tr>
+      <tr>
 
-        <td>
-         <b>
-          ${esc(row.name)}
-         </b>
-        </td>
+       <td>
+        <b>${esc(row.name)}</b>
+       </td>
 
-        <td>
-         ${row.presentDays}
-        </td>
+       <td>
+        ${row.presentDays}
+       </td>
 
-        <td>
-         ${minutesToText(
-          row.workMinutes
-         )}
-        </td>
+       <td>
+        ${minutesToText(row.workMinutes)}
+       </td>
 
-        <td>
-         ${minutesToText(
-          row.breakMinutes
-         )}
-        </td>
+       <td>
+        ${minutesToText(row.breakMinutes)}
+       </td>
 
-        <td class="${
-         row.overageMinutes>0
-          ? 'danger'
-          : 'success'
+       <td class="${
+        row.overageMinutes>0
+         ? 'danger'
+         : 'success'
+       }">
+        ${row.overageMinutes} دقيقة
+       </td>
+
+       <td>
+
+        <b class="${
+         row.compliance>=90
+          ? 'success'
+          : row.compliance>=70
+           ? 'warning'
+           : 'danger'
         }">
+         ${row.compliance}%
+        </b>
 
-         ${row.overageMinutes}
-         دقيقة
+        <div class="progress">
+         <div
+          style="width:${row.compliance}%"
+         ></div>
+        </div>
 
-        </td>
+       </td>
 
-        <td>
+      </tr>
 
-         <b class="${
-          row.compliance>=90
-           ? 'success'
-           : row.compliance>=70
-            ? 'warning'
-            : 'danger'
-         }">
-
-          ${row.compliance}%
-
-         </b>
-
-         <div class="progress">
-
-          <div
-           style="width:${row.compliance}%"
-          ></div>
-
-         </div>
-
-        </td>
-
-       </tr>
-
-      `
-     ).join('')}
+     `).join('')}
 
     </tbody>
 
@@ -4064,9 +3384,7 @@ function renderWeeklyReport(
 function csvEscape(value){
 
  const text =
-  String(
-   value??''
-  );
+  String(value??'');
 
  if(
   text.includes(',') ||
@@ -4075,10 +3393,7 @@ function csvEscape(value){
  ){
 
   return '"' +
-   text.replace(
-    /"/g,
-    '""'
-   ) +
+   text.replace(/"/g,'""') +
    '"';
 
  }
@@ -4101,7 +3416,6 @@ function exportWeeklyCSV(){
  }
 
  const rows=[
-
   [
    'الموظف',
    'أيام الحضور',
@@ -4110,36 +3424,28 @@ function exportWeeklyCSV(){
    'التجاوز بالدقائق',
    'الالتزام'
   ]
-
  ];
 
- weeklyReportRows.forEach(
-  row=>{
+ weeklyReportRows.forEach(row=>{
 
-   rows.push([
-    row.name,
-    row.presentDays,
-    minutesToText(
-     row.workMinutes
-    ),
-    minutesToText(
-     row.breakMinutes
-    ),
-    row.overageMinutes,
-    row.compliance+'%'
-   ]);
+  rows.push([
+   row.name,
+   row.presentDays,
+   minutesToText(row.workMinutes),
+   minutesToText(row.breakMinutes),
+   row.overageMinutes,
+   row.compliance+'%'
+  ]);
 
-  }
- );
+ });
 
  const csv =
   '\uFEFF'+
   rows
    .map(
-    row=>
-     row
-      .map(csvEscape)
-      .join(',')
+    row=>row
+     .map(csvEscape)
+     .join(',')
    )
    .join('\n');
 
@@ -4147,15 +3453,12 @@ function exportWeeklyCSV(){
   new Blob(
    [csv],
    {
-    type:
-     'text/csv;charset=utf-8;'
+    type:'text/csv;charset=utf-8;'
    }
   );
 
  const url =
-  URL.createObjectURL(
-   blob
-  );
+  URL.createObjectURL(blob);
 
  const a =
   document.createElement('a');
@@ -4169,9 +3472,7 @@ function exportWeeklyCSV(){
 
  a.click();
 
- URL.revokeObjectURL(
-  url
- );
+ URL.revokeObjectURL(url);
 
  showToast(
   'تم تصدير التقرير'
@@ -4257,6 +3558,20 @@ function printWeeklyReport(){
      background:#eee;
     }
 
+    .summary{
+     display:flex;
+     gap:10px;
+     flex-wrap:wrap;
+    }
+
+    .box{
+     border:1px solid #aaa;
+     padding:10px;
+     flex:1;
+     min-width:120px;
+     text-align:center;
+    }
+
     .progress{
      display:none;
     }
@@ -4280,11 +3595,9 @@ function printWeeklyReport(){
    ${area.innerHTML}
 
    <script>
-
     window.onload=function(){
      window.print();
     };
-
    <\/script>
 
   </body>
@@ -4302,292 +3615,6 @@ function printWeeklyReport(){
    LANGUAGE
 ========================================================= */
 
-const UI_TRANSLATIONS = {
-
- 'نظام الحضور والاستراحات':
-  'Attendance & Break Management System',
-
- 'إضافة وإدارة الموظفين':
-  'Add & Manage Employees',
-
- 'اختر موظفاً مسجلاً...':
-  'Select a registered employee...',
-
- 'أو اكتب اسم موظف جديد':
-  'Or enter a new employee name',
-
- 'إضافة موظف':
-  'Add Employee',
-
- 'إضافة موظف + حساب دخول':
-  'Add Employee + Login',
-
- 'إجمالي الموظفين':
-  'Total Employees',
-
- 'متواجد حالياً':
-  'Currently Present',
-
- 'في استراحة':
-  'On Break',
-
- 'غير متواجد':
-  'Not Present',
-
- 'سجل الحضور والنشاط المباشر':
-  'Live Attendance & Activity',
-
- 'الموظف':
-  'Employee',
-
- 'الحالة':
-  'Status',
-
- 'الحضور':
-  'Attendance',
-
- 'الاستراحة':
-  'Break',
-
- 'الالتزام':
-  'Compliance',
-
- 'الإجراءات':
-  'Actions',
-
- 'التقرير الأسبوعي':
-  'Weekly Report',
-
- 'كل الموظفين':
-  'All Employees',
-
- 'إنشاء التقرير':
-  'Generate Report',
-
- 'هذا الأسبوع':
-  'This Week',
-
- 'تصدير CSV':
-  'Export CSV',
-
- 'طباعة / PDF':
-  'Print / PDF',
-
- 'سجل الإدارة':
-  'Management Log',
-
- 'تحديث السجل':
-  'Refresh Log',
-
- 'سجل النشاط':
-  'Activity Log',
-
- 'التاريخ':
-  'Date',
-
- 'الإجراء':
-  'Action',
-
- 'التفاصيل':
-  'Details',
-
- 'بواسطة':
-  'By',
-
- 'تعديل نسبة الالتزام':
-  'Edit Compliance',
-
- 'النسبة الجديدة':
-  'New Percentage',
-
- 'سبب التعديل':
-  'Reason for Change',
-
- 'إلغاء':
-  'Cancel',
-
- 'حفظ التعديل':
-  'Save Changes',
-
- 'تسجيل الدخول':
-  'Sign In',
-
- 'اسم المستخدم':
-  'Username',
-
- 'كلمة المرور':
-  'Password',
-
- 'دخول':
-  'Sign In',
-
- 'تسجيل الخروج':
-  'Log Out',
-
- 'تدخين':
-  'Smoking',
-
- 'عشاء':
-  'Dinner',
-
- 'طارئة':
-  'Emergency',
-
- 'مصرح بها':
-  'Authorized',
-
- 'حضور':
-  'Check In',
-
- 'خروج':
-  'Check Out',
-
- 'عودة':
-  'Return',
-
- 'تعطيل':
-  'Disable',
-
- 'متاح':
-  'Available',
-
- 'أيام الحضور':
-  'Attendance Days',
-
- 'وقت العمل':
-  'Work Time',
-
- 'الاستراحات':
-  'Breaks',
-
- 'التجاوز بالدقائق':
-  'Overtime Minutes',
-
- 'لا توجد سجلات':
-  'No records',
-
- 'لا توجد سجلات إدارية':
-  'No management records',
-
- 'لا توجد بيانات.':
-  'No data.',
-
- 'لا توجد بيانات حضور لهذا الحساب':
-  'No attendance data for this account',
-
- 'أنشئ التقرير أولاً':
-  'Create the report first',
-
- 'العربية':
-  'Arabic'
-
-};
-
-
-const UI_PLACEHOLDERS = {
-
- 'أو اكتب اسم موظف جديد':
-  'Or enter a new employee name',
-
- 'اكتب سبب تعديل النسبة...':
-  'Enter the reason for changing the percentage...',
-
- 'اسم المستخدم':
-  'Username',
-
- 'كلمة المرور':
-  'Password',
-
- 'مثال: أحمد محمد':
-  'Example: Ahmed Mohammed',
-
- 'مثال: ahmed2':
-  'Example: ahmed2',
-
- '6 أحرف أو أكثر':
-  '6 characters or more'
-
-};
-
-
-function applyLanguage(){
-
- document.documentElement.lang =
-  currentLang;
-
- document.documentElement.dir =
-  currentLang==='ar'
-   ? 'rtl'
-   : 'ltr';
-
- const btn =
-  document.getElementById(
-   'langBtn'
-  );
-
- if(btn)
-  btn.innerText =
-   currentLang==='ar'
-    ? 'English'
-    : 'العربية';
-
- if(currentLang!=='en')
-  return;
-
- const walker =
-  document.createTreeWalker(
-   document.body,
-   NodeFilter.SHOW_TEXT
-  );
-
- while(walker.nextNode()){
-
-  const n =
-   walker.currentNode;
-
-  const key =
-   n.nodeValue
-    .replace(/\s+/g,' ')
-    .trim();
-
-  if(UI_TRANSLATIONS[key]){
-
-   n.nodeValue =
-    n.nodeValue.replace(
-     key,
-     UI_TRANSLATIONS[key]
-    );
-
-  }
-
- }
-
- document
-  .querySelectorAll(
-   'input,textarea'
-  )
-  .forEach(
-   el=>{
-
-    if(
-     UI_PLACEHOLDERS[
-      el.placeholder
-     ]
-    ){
-
-     el.placeholder =
-      UI_PLACEHOLDERS[
-       el.placeholder
-      ];
-
-    }
-
-   }
-  );
-
-}
-
-
 function toggleLanguage(){
 
  currentLang =
@@ -4600,21 +3627,24 @@ function toggleLanguage(){
   currentLang
  );
 
- if(currentLang==='ar'){
+ document.documentElement.lang =
+  currentLang;
 
-  location.reload();
+ document.documentElement.dir =
+  currentLang==='ar'
+   ? 'rtl'
+   : 'ltr';
 
-  return;
-
- }
-
- applyLanguage();
+ document.getElementById(
+  'langBtn'
+ ).innerText =
+  currentLang==='ar'
+   ? 'English'
+   : 'العربية';
 
  updateClock();
 
  renderTable();
-
- applyLanguage();
 
 }
 
@@ -4678,11 +3708,6 @@ setInterval(
 
   await loadAllData();
 
-  await loadActivityLogs();
-
-  if(isManagement())
-   await loadManagementLogs();
-
  },
  30000
 );
@@ -4706,35 +3731,22 @@ setInterval(
 ========================================================= */
 
 document
- .getElementById(
-  'loginUsername'
- )
+ .getElementById('loginUsername')
  .addEventListener(
   'keydown',
   event=>{
-
    if(event.key==='Enter')
-    document
-     .getElementById(
-      'loginPassword'
-     )
-     .focus();
-
+    document.getElementById('loginPassword').focus();
   }
  );
 
-
 document
- .getElementById(
-  'loginPassword'
- )
+ .getElementById('loginPassword')
  .addEventListener(
   'keydown',
   event=>{
-
    if(event.key==='Enter')
     login();
-
   }
  );
 
@@ -4744,15 +3756,6 @@ document
 ========================================================= */
 
 checkSession();
-
-if(currentLang==='en'){
-
- setTimeout(
-  applyLanguage,
-  100
- );
-
-}
 
 </script>
 
