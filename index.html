@@ -5,6 +5,81 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>نظام الحضور والاستراحات</title>
 
+<script>
+
+/* ===== التحكم بوضع العرض ===== */
+function setDisplayMode(mode){
+ const body=document.body;
+ body.classList.remove(
+  'display-dashboard-only',
+  'display-weekly-only'
+ );
+
+ if(mode==='dashboard'){
+  body.classList.add('display-dashboard-only');
+ }else if(mode==='weekly'){
+  body.classList.add('display-weekly-only');
+ }
+
+ localStorage.setItem('displayMode', mode);
+ updateDisplayModeButtons(mode);
+}
+
+function updateDisplayModeButtons(mode){
+ const map={
+  all:document.getElementById('modeAllBtn'),
+  dashboard:document.getElementById('modeDashboardBtn'),
+  weekly:document.getElementById('modeWeeklyBtn')
+ };
+
+ Object.values(map).forEach(b=>{
+  if(b) b.classList.remove('display-mode-active');
+ });
+
+ if(map[mode]) map[mode].classList.add('display-mode-active');
+}
+
+function restoreDisplayMode(){
+ const mode=localStorage.getItem('displayMode') || 'all';
+ setDisplayMode(mode);
+}
+
+/*
+ * تحديد الأقسام تلقائياً حسب العناوين الموجودة في نفس الكود.
+ * لا يتم نقل أي عنصر، فقط إضافة classes للقوالب الموجودة.
+ */
+function markDisplaySections(){
+ const cards=[...document.querySelectorAll('.card')];
+
+ cards.forEach(card=>{
+  const text=(card.innerText||'').trim();
+
+  if(
+   /التقرير الأسبوعي|Weekly Report/i.test(text)
+  ){
+   card.classList.add('weekly-report-card');
+   return;
+  }
+
+  if(
+   /لوحة التحكم|Dashboard|ملخص|الإحصائيات|الحضور المباشر|سجل الحضور والنشاط المباشر/i.test(text)
+  ){
+   card.classList.add('dashboard-section');
+   return;
+  }
+
+  // الأقسام الإدارية والتشغيلية تبقى مخفية في وضع العرض المخصص.
+  card.classList.add('non-dashboard-section','non-weekly-section');
+ });
+}
+
+function prepareDisplayModes(){
+ markDisplaySections();
+ restoreDisplayMode();
+}
+
+
+</script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
 <style>
@@ -702,6 +777,62 @@ tbody tr:hover td{background:#eff6ff !important}
 .dashboard-mini:last-child{border-bottom:0}
 .dashboard-mini b{color:#1e3a5f}
 .dashboard-mini span{color:#64748b}
+.dashboard-chart-box{
+ background:#ffffff;
+ border:1px solid #bfdbfe;
+ border-radius:14px;
+ padding:16px;
+ margin-top:12px;
+}
+.dashboard-chart-box h3{
+ margin:0 0 14px;
+ color:#1e3a5f;
+ font-size:15px;
+}
+.dashboard-chart-grid{
+ display:grid;
+ grid-template-columns:repeat(4,1fr);
+ gap:14px;
+}
+.dashboard-chart-item{
+ background:#f8fafc;
+ border:1px solid #dbeafe;
+ border-radius:12px;
+ padding:12px;
+}
+.dashboard-chart-label{
+ color:#64748b;
+ font-size:12px;
+ font-weight:bold;
+ margin-bottom:8px;
+}
+.dashboard-chart-track{
+ height:16px;
+ background:#e2e8f0;
+ border-radius:999px;
+ overflow:hidden;
+}
+.dashboard-chart-track span{
+ display:block;
+ width:0;
+ height:100%;
+ background:#2563eb;
+ border-radius:999px;
+ transition:width .45s ease;
+}
+.dashboard-chart-item b{
+ display:block;
+ margin-top:7px;
+ color:#1e3a5f;
+ font-size:18px;
+}
+@media(max-width:900px){
+ .dashboard-chart-grid{grid-template-columns:repeat(2,1fr)}
+}
+@media(max-width:560px){
+ .dashboard-chart-grid{grid-template-columns:1fr}
+}
+
 
 @media(max-width:900px){
  .dashboard-grid{grid-template-columns:repeat(2,1fr)}
@@ -718,10 +849,49 @@ tbody tr:hover td{background:#eff6ff !important}
  cursor:pointer;
 }
 
+
+/* ===== أوضاع العرض: لوحة التحكم / التقرير الأسبوعي / الكل ===== */
+.display-mode-bar{
+ display:flex;
+ gap:8px;
+ flex-wrap:wrap;
+ align-items:center;
+ margin:0 0 12px;
+}
+.display-mode-bar button{
+ cursor:pointer;
+}
+.display-mode-active{
+ outline:2px solid #2563eb;
+ outline-offset:1px;
+}
+body.display-dashboard-only #weeklyReportCard,
+body.display-dashboard-only .weekly-report-card,
+body.display-dashboard-only [data-section="weekly-report"]{
+ display:none !important;
+}
+body.display-dashboard-only .non-dashboard-section{
+ display:none !important;
+}
+body.display-weekly-only .non-weekly-section{
+ display:none !important;
+}
+body.display-weekly-only #dashboardSection,
+body.display-weekly-only .dashboard-section,
+body.display-weekly-only [data-section="dashboard"]{
+ display:none !important;
+}
+
 </style>
 </head>
 
 <body>
+<div class="display-mode-bar" id="displayModeBar">
+ <button type="button" class="btn-blue" id="modeAllBtn" onclick="setDisplayMode('all')">عرض الكل</button>
+ <button type="button" class="btn-green" id="modeDashboardBtn" onclick="setDisplayMode('dashboard')">لوحة التحكم فقط</button>
+ <button type="button" class="btn-blue" id="modeWeeklyBtn" onclick="setDisplayMode('weekly')">التقرير الأسبوعي فقط</button>
+</div>
+
 
 <header>
  <h1>نظام الحضور والاستراحات</h1>
@@ -768,6 +938,32 @@ tbody tr:hover td{background:#eff6ff !important}
     <div class="label">متوسط التقييم</div>
     <div class="value" id="dashAverageRating">0%</div>
     <div class="sub">متوسط الالتزام للموظفين</div>
+   </div>
+  </div>
+
+  <div class="dashboard-chart-box">
+   <h3>نسب لوحة التحكم</h3>
+   <div class="dashboard-chart-grid">
+    <div class="dashboard-chart-item">
+     <div class="dashboard-chart-label">الحضور</div>
+     <div class="dashboard-chart-track"><span id="dashAttendancePercentBar"></span></div>
+     <b id="dashAttendancePercent">0%</b>
+    </div>
+    <div class="dashboard-chart-item">
+     <div class="dashboard-chart-label">وقت العمل</div>
+     <div class="dashboard-chart-track"><span id="dashWorkPercentBar"></span></div>
+     <b id="dashWorkPercentChart">0%</b>
+    </div>
+    <div class="dashboard-chart-item">
+     <div class="dashboard-chart-label">الالتزام</div>
+     <div class="dashboard-chart-track"><span id="dashCompliancePercentBar"></span></div>
+     <b id="dashCompliancePercent">0%</b>
+    </div>
+    <div class="dashboard-chart-item">
+     <div class="dashboard-chart-label">الاستراحات</div>
+     <div class="dashboard-chart-track"><span id="dashBreakPercentBar"></span></div>
+     <b id="dashBreakPercent">0%</b>
+    </div>
    </div>
   </div>
 
@@ -3147,6 +3343,9 @@ function updateCustomDashboard(){
  const avgRating=rated.length?Math.round(rated.reduce((a,b)=>a+b,0)/rated.length):0;
 
  const workPercent=Math.min(100,Math.round((totalWork/Math.max(1,total*480))*100));
+ const attendancePercent=total?Math.round((present/total)*100):0;
+ const compliancePercent=avgRating;
+ const breakPercent=total?Math.min(100,Math.round((inBreak/total)*100)):0;
 
  const set=(id,value)=>{
   const el=document.getElementById(id);
@@ -3164,6 +3363,19 @@ function updateCustomDashboard(){
  set('dashWorkPercent',workPercent+'%');
  set('dashBreakCount',breakCount);
  set('dashAverageBreak',dashboardMinutesToClock(avgBreak));
+ set('dashAttendancePercent',attendancePercent+'%');
+ set('dashWorkPercentChart',workPercent+'%');
+ set('dashCompliancePercent',compliancePercent+'%');
+ set('dashBreakPercent',breakPercent+'%');
+
+ const setBar=(id,value)=>{
+  const el=document.getElementById(id);
+  if(el) el.style.width=Math.max(0,Math.min(100,value))+'%';
+ };
+ setBar('dashAttendancePercentBar',attendancePercent);
+ setBar('dashWorkPercentBar',workPercent);
+ setBar('dashCompliancePercentBar',compliancePercent);
+ setBar('dashBreakPercentBar',breakPercent);
 
  const bar=document.getElementById('dashWorkProgress');
  if(bar) bar.style.width=workPercent+'%';
@@ -5039,8 +5251,9 @@ const I18N = {
  'تم رفض الإذن':'Permission rejected',
  'تعذر إرسال طلب الإذن':'Unable to send permission request',
  'تعذر تحديث طلب الإذن':'Unable to update permission request',
- 'الحساب معطل أو غير موجود':'Account is disabled or does not exist'
-};
+ 'الحساب معطل أو غير موجود':'Account is disabled or does not exist',
+
+ 'عرض الكل':'Show All', 'لوحة التحكم فقط':'Dashboard Only', 'التقرير الأسبوعي فقط':'Weekly Report Only', 'عرض الشاشة':'Display View', 'لوحة التحكم والملخص اليومي':'Dashboard & Daily Summary', 'إجمالي ساعات العمل الفعلية اليوم':'Total actual work hours today', 'متوسط الالتزام للموظفين':'Average employee compliance', 'نسب لوحة التحكم':'Dashboard Percentages', 'وقت العمل':'Work Time', 'متوسط التقييم':'Average Rating', 'فترات الاستراحة':'Break Periods', 'إجمالي مدة الاستراحات اليوم':'Total break duration today', 'ملخص وقت العمل اليوم':'Today’s Work Summary', 'الحاضرون حالياً':'Currently Present', 'في الاستراحة':'On Break', 'غير المتواجدين':'Absent', 'متوسط وقت العمل للموظف':'Average Work Time per Employee', 'نسبة وقت العمل':'Work Time Percentage', 'مقابل 8 ساعات':'Against 8 Hours', 'ملخص الاستراحات':'Break Summary', 'عدد الاستراحات':'Break Count', 'متوسط الاستراحة':'Average Break', 'Cooldown':'Cooldown', 'إذن خروج':'Exit Permission', 'إذن تأخير':'Late Permission', 'إذن شخصي':'Personal Permission', 'إذن طبي':'Medical Permission', 'النوع':'Type', 'حذف طلبات اليوم':'Delete Today’s Requests', 'حذف كل الطلبات':'Delete All Requests', 'حذف سجلات اليوم':'Delete Today’s Logs', 'حذف كل السجلات':'Delete All Logs', 'إخفاء سجل النشاط':'Hide Activity Log', 'إظهار سجل النشاط':'Show Activity Log', 'نسبة الالتزام':'Compliance Percentage', 'التواجد مقارنة بالأسبوع السابق':'Attendance vs Previous Week', 'الاستراحات مقارنة بالأسبوع السابق':'Breaks vs Previous Week', 'التجاوز مقارنة بالأسبوع السابق':'Overage vs Previous Week', 'الالتزام مقارنة بالأسبوع السابق':'Compliance vs Previous Week', 'الترتيب':'Rank', 'إجمالي وقت العمل الفعلي':'Total Actual Work Time', 'مجموع تجاوز وقت البريك':'Total Break Overage', 'نقطة':'points', 'التقييم الأسبوعي':'Weekly Evaluation', 'تقييم أسبوعي':'Weekly Evaluation', 'فعال':'Active', 'معطل':'Disabled', 'تفعيل':'Enable', 'تفعيل موظف':'Enable Employee', 'الموافقة على إذن':'Approve Permission', 'رفض إذن':'Reject Permission', 'استراحة طارئة':'Emergency Break', 'استراحة طارئة لمدة 10 دقائق':'10-minute emergency break', 'تم تجاوز الحد':'Limit exceeded', 'لا توجد بيانات.':'No data.', 'اضغط «تحديث قائمة الحسابات» لعرض الحسابات.':'Click “Refresh Accounts” to view accounts.', 'تعديل الالتزام':'Edit Compliance', 'اكتب ملاحظة المدير لهذا الموظف خلال الفترة المحددة...':'Enter the manager note for this employee for the selected period...', 'العربية':'Arabic', 'English':'English', 'نظام الحضور والاستراحات — Username + Password':'Attendance & Breaks System — Username + Password',};
 
 function t(value){
  if(value===null || value===undefined) return value;
@@ -5073,18 +5286,26 @@ function applyLanguage(){
  const walker=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT);
  const nodes=[];
  while(walker.nextNode()) nodes.push(walker.currentNode);
-
  nodes.forEach(node=>{
   if(node.parentElement && ['SCRIPT','STYLE'].includes(node.parentElement.tagName)) return;
-  node.nodeValue=t(node.nodeValue);
+  const translated=t(node.nodeValue);
+  if(translated!==node.nodeValue) node.nodeValue=translated;
  });
-
- document.querySelectorAll('input[placeholder],textarea[placeholder]')
-  .forEach(el=>el.placeholder=t(el.placeholder));
+ document.querySelectorAll('input[placeholder],textarea[placeholder],select[aria-label],button[title]').forEach(el=>{
+  if(el.placeholder) el.placeholder=t(el.placeholder);
+  if(el.title) el.title=t(el.title);
+  if(el.getAttribute('aria-label')) el.setAttribute('aria-label',t(el.getAttribute('aria-label')));
+ });
 }
-
-
-
+let languageObserverStarted=false;
+function startLanguageObserver(){
+ if(languageObserverStarted) return;
+ languageObserverStarted=true;
+ const observer=new MutationObserver(()=>{
+  if(currentLang==='en') applyLanguage();
+ });
+ observer.observe(document.body,{childList:true,subtree:true});
+}
 function toggleLanguage(){
 
  currentLang = currentLang==='ar' ? 'en' : 'ar';
@@ -5223,3 +5444,10 @@ checkSession();
 
 </body>
 </html>
+<script>
+document.addEventListener('DOMContentLoaded',()=>{
+ prepareDisplayModes();
+ startLanguageObserver();
+ applyLanguage();
+});
+</script>
