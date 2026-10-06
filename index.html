@@ -1329,7 +1329,12 @@ function applyPermissions(){
 ========================================================= */
 
 async function loadAllData(options={}){
- const jobs=[loadEmployees(),loadTodayAttendance(),loadTodayBreaks()];
+ const jobs=[
+  loadEmployees(),
+  loadTodayAttendance(),
+  loadTodayBreaks(),
+  loadActivityLogs()
+ ];
  if(currentUser) jobs.push(loadPermissionRequests());
  await Promise.all(jobs);
  populateEmployeeSelects(); renderTable(); updateStats(); renderPermissionRequests();
@@ -1940,7 +1945,7 @@ async function startBreak(
    breakType==='authorized'
     ? 'استراحة مصرح بها'
     : BREAK_RULES[breakType].name
-  ).catch(()=>{});
+  );
 
   showToast(
    'تم بدء الاستراحة'
@@ -2756,7 +2761,13 @@ async function writeActivity(
  details
 ){
 
+ if(!currentUser?.id){
+  console.warn('Activity log skipped: no authenticated user');
+  return {error:new Error('لا يوجد مستخدم مسجل الدخول')};
+ }
+
  const {
+  data,
   error
  } =
  await supabaseClient
@@ -2767,16 +2778,28 @@ async function writeActivity(
    action:action,
    duration:duration,
    details:details,
-   performed_by:
-    currentUser?.id||null
-  });
+   performed_by:currentUser.id
+  })
+  .select()
+  .single();
 
- if(error)
+ if(error){
+
   console.error(
    'Activity log error:',
    error
   );
 
+  showToast(
+   'تعذر تسجيل النشاط: ' + (error.message || 'خطأ غير معروف')
+  );
+
+  return {error};
+ }
+
+ console.log('Activity log saved:', data);
+
+ return {data};
 }
 
 
@@ -2797,7 +2820,23 @@ async function loadActivityLogs(){
 
  if(error){
 
-  console.error(error);
+  console.error(
+   'Load activity logs error:',
+   error
+  );
+
+  const tbody =
+   document.getElementById('activityLogsBody');
+
+  if(tbody){
+   tbody.innerHTML=`
+    <tr>
+     <td colspan="5">
+      تعذر تحميل سجل النشاط
+     </td>
+    </tr>
+   `;
+  }
 
   return;
 
@@ -2807,6 +2846,8 @@ async function loadActivityLogs(){
   document.getElementById(
    'activityLogsBody'
   );
+
+ if(!tbody) return;
 
  if(!data?.length){
 
@@ -3426,6 +3467,20 @@ function subscribeRealtime(){
         await loadManagementLogs();
        });
       }
+     }
+    )
+
+    .on(
+     'postgres_changes',
+     {
+      event:'*',
+      schema:'public',
+      table:'activity_logs'
+     },
+     ()=>{
+      scheduleRealtimeRefresh(async()=>{
+       await loadActivityLogs();
+      });
      }
     )
 
