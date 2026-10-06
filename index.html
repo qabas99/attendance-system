@@ -677,6 +677,20 @@ tbody tr:last-child td{border-bottom:0}
     تحديث السجل
    </button>
 
+   <button
+    class="btn-red management-only"
+    onclick="deleteTodayManagementLogs()"
+   >
+    🗑️ حذف سجلات اليوم
+   </button>
+
+   <button
+    class="btn-dark management-only"
+    onclick="deleteAllManagementLogs()"
+   >
+    🗑️ حذف كل السجلات
+   </button>
+
   </div>
 
   <div class="table-wrap">
@@ -2843,6 +2857,99 @@ async function writeManagementLog(
 }
 
 
+async function deleteAllManagementLogs(){
+
+ if(!isManagement())
+  return;
+
+ if(!confirm('⚠️ تحذير: هل أنت متأكد من حذف جميع سجلات الإدارة لجميع الأيام؟ لا يمكن التراجع عن هذا الإجراء.'))
+  return;
+
+ const {
+  error
+ } =
+ await supabaseClient
+  .from('management_logs')
+  .delete()
+  .not('id','is',null);
+
+ if(error){
+
+  console.error(
+   'Delete all management logs error:',
+   error
+  );
+
+  showToast(
+   'تعذر حذف جميع سجلات الإدارة'
+  );
+
+  return;
+ }
+
+ await loadManagementLogs();
+
+ showToast(
+  'تم حذف جميع سجلات الإدارة'
+ );
+}
+
+
+async function deleteTodayManagementLogs(){
+
+ if(!isManagement())
+  return;
+
+ if(!confirm('هل تريد حذف جميع سجلات الإدارة الخاصة باليوم الحالي؟'))
+  return;
+
+ const now = new Date();
+
+ const start = new Date(
+  now.getFullYear(),
+  now.getMonth(),
+  now.getDate(),
+  0,0,0,0
+ );
+
+ const end = new Date(
+  now.getFullYear(),
+  now.getMonth(),
+  now.getDate()+1,
+  0,0,0,0
+ );
+
+ const {
+  error
+ } =
+ await supabaseClient
+  .from('management_logs')
+  .delete()
+  .gte('created_at',start.toISOString())
+  .lt('created_at',end.toISOString());
+
+ if(error){
+
+  console.error(
+   'Delete today management logs error:',
+   error
+  );
+
+  showToast(
+   'تعذر حذف سجلات اليوم'
+  );
+
+  return;
+ }
+
+ await loadManagementLogs();
+
+ showToast(
+  'تم حذف سجلات الإدارة الخاصة باليوم'
+ );
+}
+
+
 async function loadManagementLogs(){
 
  if(!isManagement())
@@ -3088,15 +3195,152 @@ async function updatePermissionRequest(id,status){
  );
 }
 
+let realtimeChannel = null;
+let realtimeRefreshTimer = null;
+
+function scheduleRealtimeRefresh(task){
+ clearTimeout(realtimeRefreshTimer);
+ realtimeRefreshTimer = setTimeout(async()=>{
+  try{
+   await task();
+  }catch(e){
+   console.error('Realtime refresh error',e);
+  }
+ },120);
+}
+
 function subscribeRealtime(){
  try{
-  supabaseClient.channel('attendance-live')
-   .on('postgres_changes',{event:'*',schema:'public',table:'attendance'},()=>{loadTodayAttendance().then(()=>{renderTable();updateStats();});})
-   .on('postgres_changes',{event:'*',schema:'public',table:'breaks'},()=>{loadTodayBreaks().then(()=>{renderTable();updateStats();});})
-   .on('postgres_changes',{event:'*',schema:'public',table:'employees'},()=>{loadEmployees().then(()=>{populateEmployeeSelects();renderTable();updateStats();if(isAdmin())loadAccountProfiles();});})
-   .on('postgres_changes',{event:'*',schema:'public',table:'permission_requests'},()=>{loadPermissionRequests().then(renderPermissionRequests);})
-   .subscribe();
- }catch(e){ console.warn('Realtime unavailable',e); }
+
+  if(realtimeChannel){
+   supabaseClient.removeChannel(realtimeChannel);
+  }
+
+  realtimeChannel =
+   supabaseClient
+    .channel('attendance-live')
+
+    .on(
+     'postgres_changes',
+     {
+      event:'*',
+      schema:'public',
+      table:'attendance'
+     },
+     ()=>{
+      scheduleRealtimeRefresh(async()=>{
+       await loadTodayAttendance();
+       renderTable();
+       updateStats();
+
+       if(isManagement()){
+        generateWeeklyReport().catch(()=>{});
+       }
+      });
+     }
+    )
+
+    .on(
+     'postgres_changes',
+     {
+      event:'*',
+      schema:'public',
+      table:'breaks'
+     },
+     ()=>{
+      scheduleRealtimeRefresh(async()=>{
+       await loadTodayBreaks();
+       renderTable();
+       updateStats();
+
+       if(isManagement()){
+        generateWeeklyReport().catch(()=>{});
+       }
+      });
+     }
+    )
+
+    .on(
+     'postgres_changes',
+     {
+      event:'*',
+      schema:'public',
+      table:'employees'
+     },
+     ()=>{
+      scheduleRealtimeRefresh(async()=>{
+       await loadEmployees();
+       populateEmployeeSelects();
+       renderTable();
+       updateStats();
+
+       if(isAdmin()){
+        await loadAccountProfiles();
+       }
+
+       if(isManagement()){
+        generateWeeklyReport().catch(()=>{});
+       }
+      });
+     }
+    )
+
+    .on(
+     'postgres_changes',
+     {
+      event:'*',
+      schema:'public',
+      table:'permission_requests'
+     },
+     ()=>{
+      scheduleRealtimeRefresh(async()=>{
+       await loadPermissionRequests();
+       renderPermissionRequests();
+       renderTable();
+       updateStats();
+      });
+     }
+    )
+
+    .on(
+     'postgres_changes',
+     {
+      event:'*',
+      schema:'public',
+      table:'management_logs'
+     },
+     ()=>{
+      if(isManagement()){
+       scheduleRealtimeRefresh(async()=>{
+        await loadManagementLogs();
+       });
+      }
+     }
+    )
+
+    .on(
+     'postgres_changes',
+     {
+      event:'*',
+      schema:'public',
+      table:'profiles'
+     },
+     ()=>{
+      scheduleRealtimeRefresh(async()=>{
+       if(isAdmin()){
+        await loadAccountProfiles();
+       }
+      });
+     }
+    )
+
+    .subscribe((status)=>{
+     console.log('Supabase Realtime:',status);
+    });
+
+ }catch(e){
+  console.warn('Realtime unavailable',e);
+ }
 }
 
 /* =========================================================
