@@ -26,7 +26,7 @@
 
 body{
  margin:0;
- background:#e5e7eb;
+ background:#ffffff;
  color:var(--ink);
  font-family:Tahoma,Arial,sans-serif;
  min-height:100vh;
@@ -514,6 +514,286 @@ tbody tr:last-child td{border-bottom:0}
  .report-controls{grid-template-columns:1fr}
  .report-summary{grid-template-columns:1fr 1fr}
 }
+
+/* =========================================================
+   LIGHT GRAY DASHBOARD - NO LAYOUT/SEMANTIC COLOR CHANGES
+========================================================= */
+:root{
+ --bg:#e5e7eb;
+ --surface:#ffffff;
+ --surface2:#f8fafc;
+ --line:#cbd5e1;
+ --ink:#1e3a5f;
+ --muted:#64748b;
+}
+
+body{
+ background:#e5e7eb !important;
+ color:#1e3a5f !important;
+}
+
+header{
+ background:#ffffff !important;
+ color:#1e3a5f !important;
+ border:1px solid #2563eb !important;
+ box-shadow:0 8px 24px rgba(37,99,235,.08) !important;
+}
+header h1{color:#1e3a5f !important}
+#clock{color:#64748b !important}
+
+.card,
+.stats.card,
+.stat,
+.modal-box,
+.login-box,
+.userbar-inner{
+ background:#ffffff !important;
+ color:#1e3a5f !important;
+ border-color:#2563eb !important;
+ box-shadow:0 8px 22px rgba(37,99,235,.07) !important;
+}
+
+h2{color:#1e3a5f !important}
+.muted{color:#64748b !important}
+
+input,button,select,textarea{
+ background:#ffffff !important;
+ color:#1e3a5f !important;
+ border-color:#94a3b8 !important;
+}
+input::placeholder,textarea::placeholder{color:#94a3b8 !important}
+input:focus,select:focus,textarea:focus{
+ border-color:#2563eb !important;
+ box-shadow:0 0 0 3px rgba(37,99,235,.12) !important;
+}
+
+/* الأزرق فقط يصبح أبيض بإطار أزرق؛ ألوان الاستراحات تبقى كما هي */
+button.btn-blue,
+.btn-blue{
+ background:#ffffff !important;
+ color:#2563eb !important;
+ border:1px solid #2563eb !important;
+}
+button.btn-blue:hover:not(:disabled){background:#eff6ff !important}
+
+/* إبقاء الألوان الدلالية الأصلية */
+.btn-green{background:#059669 !important;color:#fff !important}
+.btn-orange{background:#d97706 !important;color:#fff !important}
+.btn-red{background:#dc2626 !important;color:#fff !important}
+.btn-purple{background:#7c3aed !important;color:#fff !important}
+.btn-dark{background:#334155 !important;color:#fff !important}
+
+.table-wrap{border-color:#bfdbfe !important;background:#fff !important}
+th{
+ background:#ffffff !important;
+ color:#1e3a5f !important;
+ border-bottom-color:#bfdbfe !important;
+}
+td{
+ background:#ffffff !important;
+ color:#334155 !important;
+ border-bottom-color:#e2e8f0 !important;
+}
+tbody tr:nth-child(even) td{background:#f8fafc !important}
+tbody tr:hover td{background:#eff6ff !important}
+
+.stat span{color:#64748b !important}
+.stat b{color:#1e3a5f !important}
+
+#toast{background:#334155 !important;color:#fff !important}
+.login-screen{background:#e5e7eb !important}
+
+/* Dashboard */
+.dashboard-display{
+ background:#fff;
+ border:2px solid #2563eb;
+ border-radius:18px;
+ padding:18px;
+ margin-bottom:18px;
+ box-shadow:0 10px 28px rgba(37,99,235,.08);
+}
+.dashboard-title{
+ display:flex;
+ align-items:center;
+ justify-content:space-between;
+ gap:12px;
+ margin-bottom:14px;
+ color:#1e3a5f;
+}
+.dashboard-title h2{margin:0 !important}
+.dashboard-badge{
+ border:1px solid #2563eb;
+ background:#eff6ff;
+ color:#2563eb;
+ border-radius:999px;
+ padding:6px 12px;
+ font-size:12px;
+ font-weight:bold;
+}
+.dashboard-grid{
+ display:grid;
+ grid-template-columns:repeat(4,1fr);
+ gap:12px;
+}
+.dashboard-metric{
+ background:#fff;
+ border:1px solid #bfdbfe;
+ border-radius:14px;
+ padding:16px;
+ min-height:104px;
+ display:flex;
+ flex-direction:column;
+ justify-content:center;
+}
+.dashboard-metric .label{
+ color:#64748b;
+ font-size:13px;
+ margin-bottom:7px;
+}
+.dashboard-metric .value{
+ color:#1e3a5f;
+ font-size:28px;
+ font-weight:800;
+ font-variant-numeric:tabular-nums;
+}
+.dashboard-metric .sub{
+ color:#94a3b8;
+ font-size:11px;
+ margin-top:5px;
+}
+.dashboard-summary{
+ margin-top:12px;
+ display:grid;
+ grid-template-columns:2fr 1fr 1fr;
+ gap:12px;
+}
+.dashboard-summary-box{
+ background:#f8fafc;
+ border:1px solid #bfdbfe;
+ border-radius:14px;
+ padding:16px;
+}
+.dashboard-summary-box h3{
+ margin:0 0 10px;
+ color:#1e3a5f;
+ font-size:15px;
+}
+.dashboard-progress{
+ height:10px;
+ border-radius:999px;
+ background:#e2e8f0;
+ overflow:hidden;
+}
+.dashboard-progress span{
+ display:block;
+ height:100%;
+ width:0;
+ background:#2563eb;
+ border-radius:999px;
+ transition:width .3s ease;
+}
+.dashboard-mini{
+ display:flex;
+ justify-content:space-between;
+ gap:10px;
+ padding:7px 0;
+ border-bottom:1px solid #e2e8f0;
+}
+.dashboard-mini:last-child{border-bottom:0}
+.dashboard-mini b{color:#1e3a5f}
+.dashboard-mini span{color:#64748b}
+
+@media(max-width:900px){
+ .dashboard-grid{grid-template-columns:repeat(2,1fr)}
+ .dashboard-summary{grid-template-columns:1fr}
+}
+@media(max-width:560px){
+ .dashboard-grid{grid-template-columns:1fr}
+}
+
+
+/* ===== الرسم البياني للتقرير الأسبوعي ===== */
+.weekly-analytics{
+ margin:12px 0 16px;
+ display:grid;
+ grid-template-columns:2fr 1fr;
+ gap:12px;
+}
+.weekly-chart{
+ background:#fff;
+ border:1px solid #dbe3ee;
+ border-radius:12px;
+ padding:14px;
+ overflow:hidden;
+}
+.weekly-chart h3{
+ margin:0 0 12px;
+ color:#111827;
+ font-size:14px;
+}
+.chart-row{
+ display:grid;
+ grid-template-columns:110px minmax(100px,1fr) 75px;
+ align-items:center;
+ gap:8px;
+ margin:9px 0;
+}
+.chart-name{
+ color:#111827;
+ font-size:11px;
+ white-space:nowrap;
+ overflow:hidden;
+ text-overflow:ellipsis;
+}
+.chart-track{
+ height:13px;
+ background:#eef2f7;
+ border:1px solid #e2e8f0;
+ border-radius:999px;
+ overflow:hidden;
+}
+.chart-fill{
+ height:100%;
+ border-radius:999px;
+ min-width:2px;
+}
+.chart-value{
+ color:#111827;
+ font-size:10px;
+ font-weight:700;
+ text-align:left;
+ direction:ltr;
+ white-space:nowrap;
+}
+.chart-legend{
+ display:flex;
+ flex-wrap:wrap;
+ gap:12px;
+ margin-top:10px;
+ color:#475569;
+ font-size:10px;
+}
+.chart-legend span{
+ display:inline-flex;
+ align-items:center;
+ gap:5px;
+}
+.chart-dot{
+ width:9px;
+ height:9px;
+ border-radius:50%;
+ display:inline-block;
+}
+.chart-empty{
+ color:#64748b;
+ font-size:11px;
+ text-align:center;
+ padding:15px;
+}
+@media(max-width:900px){
+ .weekly-analytics{grid-template-columns:1fr}
+}
+
 </style>
 </head>
 
@@ -533,6 +813,86 @@ tbody tr:last-child td{border-bottom:0}
 <div id="userBar"></div>
 
 <div class="container">
+
+ <!-- لوحة التحكم المخصصة -->
+ <section class="dashboard-display management-section employee-hidden" id="customDashboard">
+  <div class="dashboard-title">
+   <h2>لوحة التحكم والملخص اليومي</h2>
+   <span class="dashboard-badge">عرض الشاشة</span>
+  </div>
+
+  <div class="dashboard-grid">
+   <div class="dashboard-metric">
+    <div class="label">إجمالي الموظفين</div>
+    <div class="value" id="dashTotalEmployees">0</div>
+    <div class="sub">الموظفون المسجلون حالياً</div>
+   </div>
+
+   <div class="dashboard-metric">
+    <div class="label">وقت العمل الكلي</div>
+    <div class="value" id="dashTotalWork">00:00</div>
+    <div class="sub">إجمالي ساعات العمل الفعلية اليوم</div>
+   </div>
+
+   <div class="dashboard-metric">
+    <div class="label">فترات الاستراحة</div>
+    <div class="value" id="dashTotalBreak">00:00</div>
+    <div class="sub">إجمالي مدة الاستراحات اليوم</div>
+   </div>
+
+   <div class="dashboard-metric">
+    <div class="label">متوسط التقييم</div>
+    <div class="value" id="dashAverageRating">0%</div>
+    <div class="sub">متوسط الالتزام للموظفين</div>
+   </div>
+  </div>
+
+  <div class="dashboard-summary">
+   <div class="dashboard-summary-box">
+    <h3>ملخص وقت العمل اليوم</h3>
+    <div class="dashboard-mini">
+     <span>الحاضرون حالياً</span>
+     <b id="dashPresent">0</b>
+    </div>
+    <div class="dashboard-mini">
+     <span>في الاستراحة</span>
+     <b id="dashBreakEmployees">0</b>
+    </div>
+    <div class="dashboard-mini">
+     <span>غير المتواجدين</span>
+     <b id="dashAbsent">0</b>
+    </div>
+    <div class="dashboard-mini">
+     <span>متوسط وقت العمل للموظف</span>
+     <b id="dashAverageWork">00:00</b>
+    </div>
+   </div>
+
+   <div class="dashboard-summary-box">
+    <h3>نسبة وقت العمل</h3>
+    <div class="dashboard-progress">
+     <span id="dashWorkProgress"></span>
+    </div>
+    <div class="dashboard-mini">
+     <span>مقابل 8 ساعات</span>
+     <b id="dashWorkPercent">0%</b>
+    </div>
+   </div>
+
+   <div class="dashboard-summary-box">
+    <h3>ملخص الاستراحات</h3>
+    <div class="dashboard-mini">
+     <span>عدد الاستراحات</span>
+     <b id="dashBreakCount">0</b>
+    </div>
+    <div class="dashboard-mini">
+     <span>متوسط الاستراحة</span>
+     <b id="dashAverageBreak">00:00</b>
+    </div>
+   </div>
+  </div>
+ </section>
+
 
  <!-- إدارة الموظفين -->
  <div class="card management-section">
@@ -2808,6 +3168,69 @@ async function resetAllEmployeeBreaks(){
    STATS
 ========================================================= */
 
+
+function dashboardMinutesToClock(minutes){
+ const m=Math.max(0,Math.floor(Number(minutes)||0));
+ const h=Math.floor(m/60);
+ const min=m%60;
+ return String(h).padStart(2,'0')+':'+String(min).padStart(2,'0');
+}
+
+function updateCustomDashboard(){
+ const total=employeesList.length;
+
+ const present=employeesList.filter(e=>{
+  const a=getAttendance(e.id);
+  return !!a?.present;
+ }).length;
+
+ const inBreak=employeesList.filter(e=>getActiveBreak(e.id)).length;
+ const absent=Math.max(0,total-present);
+
+ const totalWork=employeesList.reduce(
+  (sum,e)=>sum+getTodayActualWorkMinutes(e.id),0
+ );
+
+ const totalBreak=employeesList.reduce((sum,e)=>{
+  return sum+breaksList
+   .filter(b=>Number(b.employee_id)===Number(e.id))
+   .reduce((s,b)=>{
+    const end=b.end_time?new Date(b.end_time):new Date();
+    return s+minutesBetween(b.start_time,end);
+   },0);
+ },0);
+
+ const breakCount=breaksList.length;
+ const avgWork=total?Math.round(totalWork/total):0;
+ const avgBreak=breakCount?Math.round(totalBreak/breakCount):0;
+
+ const rated=employeesList.map(e=>Number(complianceScore(e))).filter(n=>Number.isFinite(n));
+ const avgRating=rated.length?Math.round(rated.reduce((a,b)=>a+b,0)/rated.length):0;
+
+ const workPercent=Math.min(100,Math.round((totalWork/Math.max(1,total*480))*100));
+
+ const set=(id,value)=>{
+  const el=document.getElementById(id);
+  if(el) el.innerText=value;
+ };
+
+ set('dashTotalEmployees',total);
+ set('dashTotalWork',dashboardMinutesToClock(totalWork));
+ set('dashTotalBreak',dashboardMinutesToClock(totalBreak));
+ set('dashAverageRating',avgRating+'%');
+ set('dashPresent',present);
+ set('dashBreakEmployees',inBreak);
+ set('dashAbsent',absent);
+ set('dashAverageWork',dashboardMinutesToClock(avgWork));
+ set('dashWorkPercent',workPercent+'%');
+ set('dashBreakCount',breakCount);
+ set('dashAverageBreak',dashboardMinutesToClock(avgBreak));
+
+ const bar=document.getElementById('dashWorkProgress');
+ if(bar) bar.style.width=workPercent+'%';
+}
+
+
 function updateStats(){
 
  const total =
@@ -2852,6 +3275,8 @@ function updateStats(){
  document.getElementById(
   'outEmp'
  ).innerText=out;
+
+ updateCustomDashboard();
 
 }
 
@@ -4038,6 +4463,100 @@ async function saveWeeklyReview(){
  showToast('تم حفظ ملاحظة وتقييم المدير');
 }
 
+
+function renderWeeklyAnalytics(){
+ const host=document.getElementById('weeklyAnalytics');
+ if(!host || !weeklyReportRows.length){
+  if(host) host.innerHTML='';
+  return;
+ }
+
+ const maxWork=Math.max(1,...weeklyReportRows.map(r=>Number(r.workMinutes||0)));
+ const maxBreak=Math.max(1,...weeklyReportRows.map(r=>Number(r.breakMinutes||0)));
+ const maxCount=Math.max(1,...weeklyReportRows.map(r=>Number(r.breakCount||0)));
+
+ const workRows=weeklyReportRows.map(r=>{
+  const value=Number(r.workMinutes||0);
+  const width=Math.max(2,Math.round(value/maxWork*100));
+  return `
+   <div class="chart-row">
+    <div class="chart-name" title="${esc(r.name)}">${esc(r.name)}</div>
+    <div class="chart-track">
+     <div class="chart-fill" style="width:${width}%;background:#22c55e"></div>
+    </div>
+    <div class="chart-value">${minutesToText(value)}</div>
+   </div>`;
+ }).join('');
+
+ const breakRows=weeklyReportRows.map(r=>{
+  const value=Number(r.breakMinutes||0);
+  const width=Math.max(2,Math.round(value/maxBreak*100));
+  return `
+   <div class="chart-row">
+    <div class="chart-name" title="${esc(r.name)}">${esc(r.name)}</div>
+    <div class="chart-track">
+     <div class="chart-fill" style="width:${width}%;background:#f59e0b"></div>
+    </div>
+    <div class="chart-value">${minutesToText(value)}</div>
+   </div>`;
+ }).join('');
+
+ const countRows=weeklyReportRows.map(r=>{
+  const value=Number(r.breakCount||0);
+  const width=Math.max(2,Math.round(value/maxCount*100));
+  return `
+   <div class="chart-row">
+    <div class="chart-name" title="${esc(r.name)}">${esc(r.name)}</div>
+    <div class="chart-track">
+     <div class="chart-fill" style="width:${width}%;background:#2563eb"></div>
+    </div>
+    <div class="chart-value">${value} مرة</div>
+   </div>`;
+ }).join('');
+
+ host.innerHTML=`
+  <div class="weekly-chart">
+   <h3>رسم بياني — وقت العمل الفعلي لكل موظف</h3>
+   ${workRows || '<div class="chart-empty">لا توجد بيانات</div>'}
+   <div class="chart-legend">
+    <span><i class="chart-dot" style="background:#22c55e"></i>وقت العمل</span>
+   </div>
+  </div>
+
+  <div class="weekly-chart">
+   <h3>ملخص الاستراحات</h3>
+   ${breakRows || '<div class="chart-empty">لا توجد بيانات</div>'}
+   <div class="chart-legend">
+    <span><i class="chart-dot" style="background:#f59e0b"></i>وقت الاستراحة</span>
+   </div>
+  </div>
+
+  <div class="weekly-chart">
+   <h3>عدد مرات الاستراحة</h3>
+   ${countRows || '<div class="chart-empty">لا توجد بيانات</div>'}
+   <div class="chart-legend">
+    <span><i class="chart-dot" style="background:#2563eb"></i>عدد المرات</span>
+   </div>
+  </div>
+
+  <div class="weekly-chart">
+   <h3>نسبة الالتزام والتقييم</h3>
+   ${weeklyReportRows.map(r=>{
+    const value=Math.max(0,Math.min(100,Number(r.compliance||0)));
+    const fill=value>=90?'#22c55e':value>=70?'#f59e0b':'#dc2626';
+    return `
+     <div class="chart-row">
+      <div class="chart-name" title="${esc(r.name)}">${esc(r.name)}</div>
+      <div class="chart-track">
+       <div class="chart-fill" style="width:${value}%;background:${fill}"></div>
+      </div>
+      <div class="chart-value">${value}%</div>
+     </div>`;
+   }).join('')}
+  </div>
+ `;
+}
+
 function renderWeeklyReport(from,to,previousFrom,previousTo){
  const area=document.getElementById('reportArea');
 
@@ -4063,6 +4582,8 @@ function renderWeeklyReport(from,to,previousFrom,previousTo){
    <div class="summary-box"><small>تجاوز وقت البريك</small><strong class="${totalOverage>0?'danger':'success'}">${totalOverage} دقيقة</strong></div>
    <div class="summary-box"><small>متوسط الالتزام</small><strong class="success">${averageCompliance}%</strong></div>
   </div>
+
+  <div id="weeklyAnalytics" class="weekly-analytics"></div>
 
   <div style="margin-bottom:12px">
    الفترة:
@@ -4152,6 +4673,8 @@ function renderWeeklyReport(from,to,previousFrom,previousTo){
    </table>
   </div>
  `;
+
+ renderWeeklyAnalytics();
 }
 
 /* =========================================================
