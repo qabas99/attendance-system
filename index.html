@@ -672,6 +672,16 @@ td{
 tbody tr:nth-child(even) td{background:#f8fafc !important}
 tbody tr:hover td{background:#eff6ff !important}
 
+/* ألوان الموظف حسب نوع الاستراحة - أقوى من تنسيق صفوف الجدول */
+tbody tr.employee-break-row.break-smoking td,
+tbody tr.employee-break-row.break-smoking:hover td{background:#4a2f05 !important;color:#ffffff !important}
+tbody tr.employee-break-row.break-dinner td,
+tbody tr.employee-break-row.break-dinner:hover td{background:#12355b !important;color:#ffffff !important}
+tbody tr.employee-break-row.break-emergency td,
+tbody tr.employee-break-row.break-emergency:hover td{background:#541b1b !important;color:#ffffff !important}
+tbody tr.employee-break-row.break-authorized td,
+tbody tr.employee-break-row.break-authorized:hover td{background:#374151 !important;color:#ffffff !important}
+
 .stat span{color:#64748b !important}
 .stat b{color:#1e3a5f !important}
 
@@ -882,6 +892,40 @@ body.display-weekly-only [data-section="dashboard"]{
  display:none !important;
 }
 
+
+/* ===== Weekly Report summary boxes only ===== */
+#weeklyReportSection .summary-box{
+ background:var(--weekly-summary-bg,#ffffff);
+ border:1px solid #9ca3af;
+ color:#000000;
+}
+#weeklyReportSection .summary-box small,
+#weeklyReportSection .summary-box strong{
+ color:#000000;
+}
+.weekly-color-control{
+ display:flex;
+ align-items:center;
+ gap:8px;
+ flex-wrap:wrap;
+ margin:10px 0 12px;
+}
+.weekly-color-control label{
+ font-weight:bold;
+ color:#111827;
+}
+.weekly-color-control input[type=color]{
+ width:24px;
+ height:24px;
+ padding:1px;
+ border:1px solid #9ca3af;
+ border-radius:4px;
+ background:#fff;
+ cursor:pointer;
+}
+.weekly-color-control button{
+ cursor:pointer;
+}
 </style>
 </head>
 
@@ -1145,7 +1189,7 @@ body.display-weekly-only [data-section="dashboard"]{
  </div>
 
  <!-- التقارير -->
- <div class="card management-section">
+ <div class="card management-section" id="weeklyReportSection">
 
   <h2>التقرير الأسبوعي</h2>
 
@@ -1172,6 +1216,12 @@ body.display-weekly-only [data-section="dashboard"]{
     إنشاء التقرير
    </button>
 
+  </div>
+
+  <div class="weekly-color-control">
+   <label for="weeklySummaryBgColor">لون خلفية مربعات التقرير:</label>
+   <input type="color" id="weeklySummaryBgColor" value="#ffffff" title="اختيار لون خلفية مربعات التقرير">
+   <button type="button" class="btn-dark" onclick="resetWeeklySummaryColor()">إرجاع الأبيض</button>
   </div>
 
   <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
@@ -4750,6 +4800,29 @@ async function saveWeeklyReview(){
  showToast('تم حفظ ملاحظة وتقييم المدير');
 }
 
+function applyWeeklySummaryColor(color){
+ const safeColor=/^#[0-9a-fA-F]{6}$/.test(color)?color:'#ffffff';
+ const section=document.getElementById('weeklyReportSection');
+ if(section) section.style.setProperty('--weekly-summary-bg',safeColor);
+ const picker=document.getElementById('weeklySummaryBgColor');
+ if(picker) picker.value=safeColor;
+ localStorage.setItem('weeklySummaryBgColor',safeColor);
+}
+
+function resetWeeklySummaryColor(){
+ applyWeeklySummaryColor('#ffffff');
+}
+
+function initWeeklySummaryColor(){
+ const saved=localStorage.getItem('weeklySummaryBgColor') || '#ffffff';
+ applyWeeklySummaryColor(saved);
+ const picker=document.getElementById('weeklySummaryBgColor');
+ if(picker && !picker.dataset.bound){
+  picker.dataset.bound='1';
+  picker.addEventListener('input',e=>applyWeeklySummaryColor(e.target.value));
+ }
+}
+
 function renderWeeklyReport(from,to,previousFrom,previousTo){
  const area=document.getElementById('reportArea');
 
@@ -5440,6 +5513,14 @@ document
 
 checkSession();
 
+</script>
+
+<script>
+if(document.readyState==='loading'){
+ document.addEventListener('DOMContentLoaded',initWeeklySummaryColor);
+}else{
+ initWeeklySummaryColor();
+}
 </script>
 
 </body>
