@@ -1647,10 +1647,38 @@ function workSessionMinutes(session,at=new Date()){
   : minutesBetween(session.start_time,at);
 }
 
-function getTodayActualWorkMinutes(employeeId){
+function getActualWorkSecondsInRange(employeeId,fromDate,toDate){
+ const startMs=new Date(fromDate+'T00:00:00').getTime();
+ const endMs=new Date(toDate+'T23:59:59.999').getTime();
+ if(!Number.isFinite(startMs)||!Number.isFinite(endMs)) return 0;
+ const nowMs=Date.now();
  return workSessionsList
   .filter(s=>Number(s.employee_id)===Number(employeeId))
-  .reduce((sum,s)=>sum+workSessionMinutes(s),0);
+  .reduce((sum,s)=>{
+   const sessionStart=new Date(s.start_time).getTime();
+   const sessionEnd=s.end_time?new Date(s.end_time).getTime():nowMs;
+   if(!Number.isFinite(sessionStart)||!Number.isFinite(sessionEnd)) return sum;
+   const overlapStart=Math.max(sessionStart,startMs);
+   const overlapEnd=Math.min(sessionEnd,endMs,nowMs);
+   return sum+Math.max(0,Math.floor((overlapEnd-overlapStart)/1000));
+  },0);
+}
+
+function actualWorkSecondsToday(employeeId){
+ const d=today();
+ return getActualWorkSecondsInRange(employeeId,d,d);
+}
+
+function secondsToClock(seconds){
+ const total=Math.max(0,Math.floor(Number(seconds)||0));
+ const h=Math.floor(total/3600);
+ const m=Math.floor((total%3600)/60);
+ const sec=total%60;
+ return String(h).padStart(2,'0')+':'+String(m).padStart(2,'0')+':'+String(sec).padStart(2,'0');
+}
+
+function getTodayActualWorkMinutes(employeeId){
+ return Math.floor(actualWorkSecondsToday(employeeId)/60);
 }
 
 function patchWorkSession(row){
@@ -2874,8 +2902,17 @@ function updateTimers(){
  employeesList.forEach(employee=>{
   const el=document.getElementById('workTimer_'+employee.id);
   if(!el) return;
-  el.innerText=minutesToClock(getTodayActualWorkMinutes(employee.id));
+  el.innerText=secondsToClock(actualWorkSecondsToday(employee.id));
  });
+
+ const reportFrom=document.getElementById('reportFrom')?.value;
+ const reportTo=document.getElementById('reportTo')?.value;
+ if(reportFrom&&reportTo){
+  weeklyReportRows.forEach(row=>{
+   const el=document.getElementById('reportWorkTimer_'+row.id);
+   if(el) el.innerText=secondsToClock(getActualWorkSecondsInRange(row.id,reportFrom,reportTo));
+  });
+ }
 
  breaksList
   .filter(b=>!b.end_time)
@@ -3789,6 +3826,14 @@ function automaticWeeklyRating(compliance,overageMinutes){
  return 'يحتاج تحسين';
 }
 
+function performanceStatus(compliance,overageMinutes){
+ if(compliance>=95 && overageMinutes===0) return {text:'أداء ممتاز ✓',cls:'success'};
+ if(compliance>=90 && overageMinutes<=5) return {text:'أداء جيد جداً ✓',cls:'success'};
+ if(compliance>=80 && overageMinutes<=10) return {text:'أداء جيد',cls:'warning'};
+ if(compliance>=70) return {text:'أداء مقبول — يحتاج متابعة',cls:'warning'};
+ return {text:'أداء يحتاج تحسين',cls:'danger'};
+}
+
 function compareValue(current,previous){
  const delta=Number(current||0)-Number(previous||0);
  if(delta>0) return {delta,cls:'report-change-up',symbol:'▲'};
@@ -3909,6 +3954,7 @@ async function generateWeeklyReport(){
    const compliance=Math.max(0,Math.min(100,Math.round(score)));
    const previousCompliance=Math.max(0,Math.min(100,Math.round(previousScore)));
    const automaticRating=automaticWeeklyRating(compliance,overageMinutes);
+   const performance=performanceStatus(compliance,overageMinutes);
    const review=reviews.get(String(employee.id))||null;
 
    return {
@@ -3928,6 +3974,8 @@ async function generateWeeklyReport(){
     previousOverageMinutes,
     previousCompliance,
     automaticRating,
+    performanceText:performance.text,
+    performanceClass:performance.cls,
     managerRating:review?.rating||'—',
     managerNote:review?.note||'',
     reviewCreatedAt:review?.createdAt||null
@@ -4087,6 +4135,7 @@ function renderWeeklyReport(from,to,previousFrom,previousTo){
       <th>عدد مرات البريك</th>
       <th>تجاوز وقت البريك</th>
       <th>نسبة الالتزام</th>
+      <th>حالة الأداء</th>
       <th>التقييم التلقائي</th>
       <th>مقارنة بالأسبوع السابق</th>
       <th>التنبيه</th>
@@ -4107,7 +4156,7 @@ function renderWeeklyReport(from,to,previousFrom,previousTo){
         <td><b>#${row.rank}</b></td>
         <td>${row.photoUrl?`<img class="report-photo" src="${esc(row.photoUrl)}" alt="">`:``} <b>${esc(row.name)}</b></td>
         <td>
-         ${minutesToText(row.workMinutes)}
+         <strong class="report-work-live" id="reportWorkTimer_${row.id}">${secondsToClock(getActualWorkSecondsInRange(row.id,from,to))}</strong>
          <div class="${workCmp.cls}" style="font-size:11px;margin-top:4px">${workCmp.symbol} ${minutesToText(Math.abs(workCmp.delta))}</div>
         </td>
         <td>
@@ -4122,6 +4171,9 @@ function renderWeeklyReport(from,to,previousFrom,previousTo){
         <td>
          <b class="${row.compliance>=90?'success':row.compliance>=70?'warning':'danger'}">${row.compliance}%</b>
          <div class="${complianceDeltaClass(complianceDelta)}" style="font-size:11px;margin-top:4px">${formatDelta(complianceDelta,' نقطة')}</div>
+        </td>
+        <td>
+         <b class="${row.performanceClass}">${esc(row.performanceText)}</b>
         </td>
         <td>
          <span class="${row.automaticRating==='ممتاز'||row.automaticRating==='جيد جداً'?'report-ok':'report-alert'}">${esc(row.automaticRating)}</span>
@@ -4195,6 +4247,7 @@ function exportWeeklyCSV(){
   'عدد مرات البريك',
   'مجموع تجاوز وقت البريك',
   'نسبة الالتزام',
+  'حالة الأداء',
   'التقييم الأسبوعي التلقائي',
   'التواجد مقارنة بالأسبوع السابق',
   'الاستراحات مقارنة بالأسبوع السابق',
@@ -4214,6 +4267,7 @@ function exportWeeklyCSV(){
    row.breakCount,
    row.overageMinutes+' دقيقة',
    row.compliance+'%',
+   row.performanceText,
    row.automaticRating,
    formatDelta(row.workMinutes-row.previousWorkMinutes,' دقيقة'),
    formatDelta(row.breakMinutes-row.previousBreakMinutes,' دقيقة'),
