@@ -3104,12 +3104,24 @@ async function finishBreak(breakId){
 
  active.end_time=now; active.actual_minutes=actual; active.overage_minutes=overage; patchBreak(active);
 
+ // تحديث فوري محلياً + إرسال العودة للمسؤول قبل أي عمليات إضافية.
+ renderTable(); updateStats();
+ if(realtimeChannel){
+  realtimeChannel.send({
+   type:'broadcast',
+   event:'break_fast_update',
+   payload:{eventType:'UPDATE',new:active}
+  }).catch(e=>console.warn('Fast break return broadcast error:',e));
+ }
+
+ // فتح جلسة العمل بالخلفية حتى لا تتأخر عودة الموظف أمام المسؤول.
  const attendance=getAttendance(active.employee_id);
  if(attendance?.present){
-  const ws=await openWorkSession(active.employee_id,attendance.id,now);
-  if(ws.error) showToast('تمت العودة لكن تعذر بدء وقت العمل الجديد');
+  openWorkSession(active.employee_id,attendance.id,now).then(ws=>{
+   if(ws?.error) showToast('تمت العودة لكن تعذر بدء وقت العمل الجديد');
+  }).catch(()=>showToast('تمت العودة لكن تعذر بدء وقت العمل الجديد'));
  }
- renderTable(); updateStats();
+
  writeActivity(active.employee_id,employee?.name||'','إنهاء استراحة',actual+' دقيقة',overage>0?`تجاوز ${overage} دقيقة`:'ضمن الوقت المحدد').catch(()=>{});
 
  showToast(
