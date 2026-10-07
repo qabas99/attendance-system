@@ -79,6 +79,35 @@ function prepareDisplayModes(){
 }
 
 
+/* ===== الوضع الداكن / الفاتح ===== */
+function updateThemeButton(){
+ const btn=document.getElementById('themeToggleBtn');
+ if(!btn) return;
+ const light=document.documentElement.getAttribute('data-theme')==='light';
+ btn.innerHTML=light ? '🌙 الوضع الداكن' : '☀️ الوضع الفاتح';
+ btn.title=light ? 'التبديل إلى الوضع الداكن' : 'التبديل إلى الوضع الفاتح';
+}
+
+function applyTheme(theme){
+ const safeTheme=theme==='light' ? 'light' : 'dark';
+ document.documentElement.setAttribute('data-theme',safeTheme);
+ localStorage.setItem('attendance_theme',safeTheme);
+ updateThemeButton();
+}
+
+function toggleTheme(){
+ const current=document.documentElement.getAttribute('data-theme') || 'dark';
+ applyTheme(current==='light' ? 'dark' : 'light');
+}
+
+function initTheme(){
+ const saved=localStorage.getItem('attendance_theme') || 'dark';
+ applyTheme(saved);
+}
+
+initTheme();
+
+
 </script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
@@ -926,10 +955,307 @@ body.display-weekly-only [data-section="dashboard"]{
 .weekly-color-control button{
  cursor:pointer;
 }
+
+
+/* =========================================================
+   THEME: LIGHT MODE
+========================================================= */
+html[data-theme="light"] body{
+ background:#eef2f7;
+ color:#172033;
+}
+
+html[data-theme="light"] header{
+ background:linear-gradient(120deg,#ffffff,#eaf1fb);
+ border-bottom:1px solid #cbd5e1;
+ box-shadow:0 8px 25px rgba(15,23,42,.08);
+}
+
+html[data-theme="light"] header h1{color:#172033}
+html[data-theme="light"] #clock{color:#64748b}
+
+html[data-theme="light"] .display-mode-bar{
+ background:#ffffff;
+ border-bottom:1px solid #dbe3ee;
+ box-shadow:0 3px 12px rgba(15,23,42,.06);
+}
+
+html[data-theme="light"] .card,
+html[data-theme="light"] .login-box,
+html[data-theme="light"] .modal-box{
+ background:#ffffff;
+ border-color:#d7e0eb;
+ color:#172033;
+ box-shadow:0 8px 24px rgba(15,23,42,.08);
+}
+
+html[data-theme="light"] h2,
+html[data-theme="light"] h3,
+html[data-theme="light"] label{
+ color:#172033;
+}
+
+html[data-theme="light"] input,
+html[data-theme="light"] select,
+html[data-theme="light"] textarea{
+ background:#f8fafc;
+ color:#172033;
+ border-color:#cbd5e1;
+}
+
+html[data-theme="light"] input::placeholder,
+html[data-theme="light"] textarea::placeholder{
+ color:#94a3b8;
+}
+
+html[data-theme="light"] .table-wrap{
+ border-color:#d7e0eb;
+}
+
+html[data-theme="light"] th{
+ background:#e8eef6;
+ color:#334155;
+ border-color:#d5deea;
+}
+
+html[data-theme="light"] td{
+ color:#334155;
+ border-color:#e2e8f0;
+}
+
+html[data-theme="light"] tbody tr{
+ background:#ffffff;
+}
+
+html[data-theme="light"] tbody tr:nth-child(even){
+ background:#f8fafc;
+}
+
+html[data-theme="light"] tbody tr:hover{
+ background:#eef5ff;
+}
+
+html[data-theme="light"] .stat,
+html[data-theme="light"] .summary-box,
+html[data-theme="light"] .dashboard-metric,
+html[data-theme="light"] .dashboard-summary-box,
+html[data-theme="light"] .dashboard-chart-box{
+ background:#f8fafc;
+ border-color:#d7e0eb;
+ color:#172033;
+}
+
+html[data-theme="light"] .stat span,
+html[data-theme="light"] .summary-box small,
+html[data-theme="light"] .muted,
+html[data-theme="light"] .sub{
+ color:#64748b;
+}
+
+html[data-theme="light"] .stat b,
+html[data-theme="light"] .summary-box strong,
+html[data-theme="light"] .dashboard-metric .value{
+ color:#172033;
+}
+
+html[data-theme="light"] .progress,
+html[data-theme="light"] .dashboard-chart-track{
+ background:#e2e8f0;
+}
+
+html[data-theme="light"] .userbar{
+ background:#ffffff;
+ border-bottom-color:#d7e0eb;
+ color:#172033;
+ box-shadow:0 3px 14px rgba(15,23,42,.06);
+}
+
+html[data-theme="light"] .badge-blue{
+ background:#eff6ff;
+ color:#1d4ed8;
+ border-color:#93c5fd;
+}
+
+html[data-theme="light"] .badge-green{
+ background:#ecfdf5;
+ color:#047857;
+ border-color:#6ee7b7;
+}
+
+html[data-theme="light"] .badge-orange{
+ background:#fff7ed;
+ color:#c2410c;
+ border-color:#fdba74;
+}
+
+html[data-theme="light"] .badge-red{
+ background:#fef2f2;
+ color:#b91c1c;
+ border-color:#fca5a5;
+}
+
+html[data-theme="light"] .badge-purple{
+ background:#f5f3ff;
+ color:#6d28d9;
+ border-color:#c4b5fd;
+}
+
+html[data-theme="light"] .smoking-cooldown{
+ background:#fff7ed;
+ border-color:#fdba74;
+ color:#b45309;
+}
+
+html[data-theme="light"] .smoking-cooldown.available{
+ background:#ecfdf5;
+ border-color:#6ee7b7;
+ color:#047857;
+}
+
+html[data-theme="light"] .weekly-color-control label{
+ color:#172033;
+}
+
+html[data-theme="light"] .danger{color:#b91c1c}
+html[data-theme="light"] .success{color:#047857}
+html[data-theme="light"] .warning{color:#b45309}
+html[data-theme="light"] .present{color:#047857}
+html[data-theme="light"] .out{color:#be123c}
+html[data-theme="light"] .break{color:#b45309}
+
+/* زر تبديل المظهر */
+#themeToggleBtn{
+ position:fixed;
+ top:12px;
+ left:14px;
+ z-index:10000;
+ padding:9px 13px;
+ border-radius:10px;
+ background:#334155;
+ color:#fff;
+ border:1px solid rgba(255,255,255,.12);
+ font-size:12px;
+}
+
+html[data-theme="light"] #themeToggleBtn{
+ background:#ffffff;
+ color:#172033;
+ border:1px solid #cbd5e1;
+ box-shadow:0 4px 12px rgba(15,23,42,.12);
+}
+
+@media(max-width:700px){
+ #themeToggleBtn{
+  top:8px;
+  left:8px;
+  font-size:11px;
+  padding:8px 10px;
+ }
+}
+
+/* =========================================================
+   THEME: DARK MODE (default)
+   This overrides the light-gray dashboard defaults above.
+========================================================= */
+html[data-theme="dark"] body{
+ background:#0b1220 !important;
+ color:#e5edf8 !important;
+}
+html[data-theme="dark"] header{
+ background:linear-gradient(120deg,#0b1324,#162844) !important;
+ color:#f1f5fb !important;
+ border-color:#263b5d !important;
+ box-shadow:0 10px 35px rgba(0,0,0,.35) !important;
+}
+html[data-theme="dark"] header h1{color:#f1f5fb !important}
+html[data-theme="dark"] #clock{color:#a9bdd9 !important}
+html[data-theme="dark"] .card,
+html[data-theme="dark"] .stats.card,
+html[data-theme="dark"] .stat,
+html[data-theme="dark"] .modal-box,
+html[data-theme="dark"] .login-box,
+html[data-theme="dark"] .userbar-inner,
+html[data-theme="dark"] .userbar{
+ background:#111c2f !important;
+ color:#e5edf8 !important;
+ border-color:#2b3d5c !important;
+ box-shadow:0 12px 30px rgba(0,0,0,.28) !important;
+}
+html[data-theme="dark"] h2,
+html[data-theme="dark"] h3,
+html[data-theme="dark"] label{color:#f1f5fb !important}
+html[data-theme="dark"] .muted,
+html[data-theme="dark"] .sub{color:#9fb0c8 !important}
+html[data-theme="dark"] input,
+html[data-theme="dark"] select,
+html[data-theme="dark"] textarea{
+ background:#0b1526 !important;
+ color:#e5edf8 !important;
+ border-color:#33445f !important;
+}
+html[data-theme="dark"] input::placeholder,
+html[data-theme="dark"] textarea::placeholder{color:#71839d !important}
+html[data-theme="dark"] input:focus,
+html[data-theme="dark"] select:focus,
+html[data-theme="dark"] textarea:focus{
+ border-color:#60a5fa !important;
+ box-shadow:0 0 0 3px rgba(59,130,246,.18) !important;
+}
+html[data-theme="dark"] .table-wrap{border-color:#2b3d5c !important;background:#0f192a !important}
+html[data-theme="dark"] th{
+ background:#17243a !important;
+ color:#e5edf8 !important;
+ border-bottom-color:#33445f !important;
+}
+html[data-theme="dark"] td{
+ background:#111c2f !important;
+ color:#dbe6f5 !important;
+ border-bottom-color:#263650 !important;
+}
+html[data-theme="dark"] tbody tr:nth-child(even) td{background:#0f192a !important}
+html[data-theme="dark"] tbody tr:hover td{background:#182942 !important}
+html[data-theme="dark"] .stat span{color:#9fb0c8 !important}
+html[data-theme="dark"] .stat b{color:#f1f5fb !important}
+html[data-theme="dark"] .display-mode-bar{
+ background:#0f192a !important;
+ border-bottom-color:#263650 !important;
+}
+html[data-theme="dark"] .display-mode-bar button.btn-blue,
+html[data-theme="dark"] .btn-blue{
+ background:#1d4ed8 !important;
+ color:#fff !important;
+ border:1px solid #3b82f6 !important;
+}
+html[data-theme="dark"] .btn-green{background:#059669 !important;color:#fff !important}
+html[data-theme="dark"] .btn-orange{background:#d97706 !important;color:#fff !important}
+html[data-theme="dark"] .btn-red{background:#dc2626 !important;color:#fff !important}
+html[data-theme="dark"] .btn-purple{background:#7c3aed !important;color:#fff !important}
+html[data-theme="dark"] .btn-dark{background:#334155 !important;color:#fff !important}
+html[data-theme="dark"] #themeToggleBtn{
+ background:#f8fafc !important;
+ color:#172033 !important;
+ border:1px solid #cbd5e1 !important;
+ position:fixed !important;
+ top:12px !important;
+ left:12px !important;
+ z-index:99999 !important;
+}
+html[data-theme="light"] #themeToggleBtn{
+ background:#172033 !important;
+ color:#fff !important;
+ border:1px solid #334155 !important;
+ position:fixed !important;
+ top:12px !important;
+ left:12px !important;
+ z-index:99999 !important;
+}
+html[data-theme="dark"] .weekly-color-control label{color:#e5edf8 !important}
+
 </style>
 </head>
 
 <body>
+<button type="button" id="themeToggleBtn" onclick="toggleTheme()">☀️ الوضع الفاتح</button>
 <div class="display-mode-bar" id="displayModeBar">
  <button type="button" class="btn-blue" id="modeAllBtn" onclick="setDisplayMode('all')">عرض الكل</button>
  <button type="button" class="btn-green" id="modeDashboardBtn" onclick="setDisplayMode('dashboard')">لوحة التحكم فقط</button>
@@ -5524,11 +5850,19 @@ if(document.readyState==='loading'){
 </script>
 
 </body>
+<script>
+document.addEventListener('DOMContentLoaded',()=>{
+  updateThemeButton();
+});
+</script>
+
 </html>
 <script>
 document.addEventListener('DOMContentLoaded',()=>{
+ initTheme();
  prepareDisplayModes();
  startLanguageObserver();
  applyLanguage();
+ updateThemeButton();
 });
 </script>
