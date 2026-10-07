@@ -4791,7 +4791,7 @@ async function updatePermissionRequest(id,status){
 let realtimeChannel = null;
 let realtimeRefreshTimer = null;
 
-function scheduleRealtimeRefresh(task){
+function scheduleRealtimeRefresh(task,delay=15){
  clearTimeout(realtimeRefreshTimer);
  realtimeRefreshTimer = setTimeout(async()=>{
   try{
@@ -4799,7 +4799,20 @@ function scheduleRealtimeRefresh(task){
   }catch(e){
    console.error('Realtime refresh error',e);
   }
- },120);
+ },Math.max(0,delay));
+}
+
+function applyRealtimeBreakChange(payload){
+ const row=payload?.new || payload?.old;
+ if(!row?.id) return;
+ const event=payload?.eventType;
+ if(event==='DELETE'){
+  breaksList=breaksList.filter(x=>Number(x.id)!==Number(row.id));
+ }else{
+  patchBreak(row);
+ }
+ renderTable();
+ updateStats();
 }
 
 function subscribeRealtime(){
@@ -4840,7 +4853,11 @@ function subscribeRealtime(){
       schema:'public',
       table:'breaks'
      },
-     ()=>{
+     (payload)=>{
+      // تحديث الاستراحة محلياً فور وصول حدث Supabase Realtime، بدون انتظار طلب SELECT جديد.
+      applyRealtimeBreakChange(payload);
+
+      // مزامنة خفيفة بالخلفية للتأكد من تطابق البيانات مع قاعدة البيانات.
       scheduleRealtimeRefresh(async()=>{
        await loadTodayBreaks();
        renderTable();
@@ -4849,7 +4866,7 @@ function subscribeRealtime(){
        if(isManagement()){
         generateWeeklyReport().catch(()=>{});
        }
-      });
+      },250);
      }
     )
 
