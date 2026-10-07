@@ -1425,7 +1425,9 @@ html[data-theme="dark"] .weekly-color-control label{color:#e5edf8 !important}
  <div class="card management-section">
   <h2>حسابات الموظفين</h2>
   <div class="form" style="grid-template-columns:1fr 1fr 1fr 1fr">
-   <input id="newEmployeeName" placeholder="اسم الموظف">
+   <select id="newEmployeeSelect">
+    <option value="">اختر الموظف المسجل...</option>
+   </select>
    <input id="newEmployeeUsername" placeholder="اسم المستخدم">
    <input id="newEmployeePassword" type="password" placeholder="كلمة المرور">
    <button class="btn-purple management-only" onclick="createEmployeeAccount()">إنشاء حساب موظف</button>
@@ -2371,14 +2373,20 @@ async function loadEmployees(){
 }
 
 function populateEmployeeSelects(){
- const preset=document.getElementById('presetEmployee'), report=document.getElementById('reportEmployee'), management=document.getElementById('managementEmployeeFilter');
+ const preset=document.getElementById('presetEmployee'), report=document.getElementById('reportEmployee'), management=document.getElementById('managementEmployeeFilter'), accountEmployee=document.getElementById('newEmployeeSelect');
  if(!preset||!report||!management) return;
+ if(accountEmployee) accountEmployee.innerHTML='<option value="">اختر الموظف المسجل...</option>';
  preset.innerHTML='<option value="">اختر موظفاً مسجلاً...</option>';
  report.innerHTML='<option value="">كل الموظفين</option>';
  management.innerHTML='<option value="">كل الموظفين</option>';
  employeesList.forEach(emp=>{
   preset.insertAdjacentHTML('beforeend',`<option value="${esc(emp.name)}">${esc(emp.name)}</option>`);
  });
+ if(accountEmployee){
+  employeesList.forEach(emp=>{
+   accountEmployee.insertAdjacentHTML('beforeend',`<option value="${emp.id}">${esc(emp.name)}</option>`);
+  });
+ }
  const reportList=isManagement()?allEmployeesList:employeesList;
  reportList.forEach(emp=>{
   report.insertAdjacentHTML('beforeend',`<option value="${emp.id}">${esc(emp.name)}${emp.active===false?' (معطل)':''}</option>`);
@@ -2416,21 +2424,21 @@ async function addEmployee(){
 
 async function createEmployeeAccount(){
  if(!isManagement()) return showToast('ليس لديك صلاحية إنشاء حساب موظف');
- const name=document.getElementById('newEmployeeName').value.trim();
+ const employeeId=document.getElementById('newEmployeeSelect').value;
  const username=document.getElementById('newEmployeeUsername').value.trim().toLowerCase();
  const password=document.getElementById('newEmployeePassword').value;
- if(!name||!username||!password) return showToast('أدخل اسم الموظف واسم المستخدم وكلمة المرور');
+ const employee=(allEmployeesList||[]).find(e=>String(e.id)===String(employeeId));
+ if(!employee||employee.active===false) return showToast('اختر موظفاً نشطاً مسجلاً أولاً');
+ if(!username||!password) return showToast('أدخل اسم المستخدم وكلمة المرور');
  if(!/^[a-z0-9._-]{3,30}$/.test(username)) return showToast('اسم المستخدم يجب أن يكون بالإنجليزية 3 أحرف على الأقل');
  if(password.length<6) return showToast('كلمة المرور يجب أن تكون 6 أحرف على الأقل');
- if(allEmployeesList.some(e=>String(e.name||'').trim().toLowerCase()===name.toLowerCase())) return showToast('الموظف موجود بالفعل');
- const {data,error}=await supabaseClient.functions.invoke('create-employee-user',{body:{name,username,password}});
+ const {data,error}=await supabaseClient.functions.invoke('create-employee-user',{body:{employee_id:employee.id,username,password}});
  if(error||data?.error){ console.error(error||data?.error); return showToast(data?.error||'تعذر إنشاء حساب الموظف'); }
- document.getElementById('newEmployeeName').value='';
+ document.getElementById('newEmployeeSelect').value='';
  document.getElementById('newEmployeeUsername').value='';
  document.getElementById('newEmployeePassword').value='';
- await loadEmployees(); populateEmployeeSelects(); renderTable(); updateStats();
- if(isAdmin()) loadAccountProfiles();
- showToast('تم إنشاء حساب الموظف بنجاح');
+ if(isAdmin()) await loadAccountProfiles();
+ showToast('تم إنشاء الحساب وربطه بالموظف: '+employee.name);
 }
 
 async function loadAccountProfiles(){
