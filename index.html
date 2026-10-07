@@ -3787,40 +3787,24 @@ async function deleteEmployeeDirect(employeeId){
  if(!isAdmin()) return showToast('حذف الموظف متاح للمسؤول فقط');
  const employee=allEmployeesList.find(e=>Number(e.id)===Number(employeeId));
  if(!employee) return showToast('الموظف غير موجود');
- if(!confirm(`حذف الموظف ${employee.name} نهائياً؟\nسيتم حذف سجلات الحضور والاستراحات والنشاط والحساب المرتبط. لا يمكن التراجع.`)) return;
+ if(!confirm(`حذف الموظف ${employee.name} نهائياً؟\nسيتم حذف سجلاته والحساب المرتبط به من النظام وSupabase Auth. لا يمكن التراجع.`)) return;
  const id=Number(employeeId);
  try{
-  const tables=[
-   ['permission_requests','employee_id'],
-   ['activity_logs','employee_id'],
-   ['management_logs','employee_id'],
-   ['breaks','employee_id'],
-   ['attendance','employee_id'],
-   ['work_sessions','employee_id']
-  ];
-  for(const [table,column] of tables){
-   const {error}=await supabaseClient.from(table).delete().eq(column,id);
-   if(error) throw new Error(`${table}: ${error.message}`);
+  const {data,error}=await supabaseClient.functions.invoke('delete-employee-user',{body:{employee_id:id}});
+  if(error||data?.error){
+   console.error(error||data?.error);
+   return showToast(data?.error||'تعذر حذف الموظف والحساب');
   }
-  const {data:profiles,error:profileReadError}=await supabaseClient.from('profiles').select('id').eq('employee_id',id);
-  if(profileReadError) throw new Error(`profiles: ${profileReadError.message}`);
-  if(profiles?.length){
-   const ids=profiles.map(x=>x.id).filter(Boolean);
-   const {error:profileDeleteError}=await supabaseClient.from('profiles').delete().in('id',ids);
-   if(profileDeleteError) throw new Error(`profiles: ${profileDeleteError.message}`);
-  }
-  const {error:employeeDeleteError}=await supabaseClient.from('employees').delete().eq('id',id);
-  if(employeeDeleteError) throw new Error(`employees: ${employeeDeleteError.message}`);
   allEmployeesList=allEmployeesList.filter(e=>Number(e.id)!==id);
   employeesList=employeesList.filter(e=>Number(e.id)!==id);
   attendanceList=attendanceList.filter(a=>Number(a.employee_id)!==id);
   breaksList=breaksList.filter(b=>Number(b.employee_id)!==id);
   populateEmployeeSelects(); renderTable(); updateStats();
-  if(isAdmin()) loadAccountProfiles();
-  showToast('تم حذف الموظف نهائياً');
+  if(isAdmin()) await loadAccountProfiles();
+  showToast('تم حذف الموظف والحساب نهائياً');
  }catch(error){
   console.error('DELETE EMPLOYEE ERROR',error);
-  showToast('تعذر حذف الموظف: '+(error?.message||error));
+  showToast('تعذر حذف الموظف والحساب: '+(error?.message||error));
  }
 }
 
