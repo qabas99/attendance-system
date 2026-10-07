@@ -1953,11 +1953,16 @@ const BREAK_RULES = {
 ========================================================= */
 
 function today(){
-
- return new Date()
-  .toISOString()
-  .slice(0,10);
-
+ // تاريخ اليوم حسب توقيت النظام المحلي (العراق)، وليس UTC.
+ const d = new Date();
+ const parts = new Intl.DateTimeFormat('en-CA',{
+  timeZone:'Asia/Baghdad',
+  year:'numeric',
+  month:'2-digit',
+  day:'2-digit'
+ }).formatToParts(d);
+ const get = type => parts.find(p=>p.type===type)?.value || '';
+ return `${get('year')}-${get('month')}-${get('day')}`;
 }
 
 
@@ -4814,56 +4819,34 @@ async function updatePermissionRequest(id,status){
  if(!r) return;
  if(status==='rejected' && !confirm('هل تريد رفض طلب الإذن؟')) return;
 
+ // الموافقة على الطارئة تتم داخل Database Transaction واحدة:
+ // قفل الطلب + التحقق من الحضور + إغلاق جلسة العمل + إنشاء البريك + تحديث الطلب.
  if(status==='approved' && r.request_type==='استراحة طارئة'){
-  const attendance=getAttendance(r.employee_id);
-  if(!attendance?.present){
-   showToast('لا يمكن الموافقة: الموظف غير مسجل حضور');
-   return;
-  }
-  if(getActiveBreak(r.employee_id)){
-   showToast('لا يمكن الموافقة: لدى الموظف استراحة نشطة بالفعل');
-   return;
-  }
-
-  // الطارئة يجب أن توقف جلسة العمل الحالية حتى لا يُحتسب وقتها كوقت عمل.
-  const now=new Date().toISOString();
-  const activeWorkSession=getActiveWorkSession(r.employee_id);
-  if(activeWorkSession){
-   const {error:closeError}=await closeWorkSession(r.employee_id,now);
-   if(closeError){
-    console.error('EMERGENCY CLOSE WORK SESSION ERROR',closeError);
-    showToast('تعذر إيقاف وقت العمل قبل بدء استراحة الطوارئ');
-    return;
+  try{
+   const {data,error}=await supabaseClient.rpc('approve_emergency_break',{p_request_id:Number(id)});
+   if(error || data?.error){
+    console.error('EMERGENCY APPROVAL RPC ERROR',error||data?.error);
+    return showToast(data?.error||error?.message||'تعذر الموافقة على استراحة الطوارئ');
    }
-  }
+   const breakRow=data?.break || data?.break_data || null;
+   if(breakRow?.id) patchBreak(breakRow);
 
-  const {data:breakData,error:breakError}=await supabaseClient
-   .from('breaks')
-   .insert({
-    employee_id:r.employee_id,
-    break_type:'emergency',
-    start_time:now,
-    allowed_minutes:BREAK_RULES.emergency.minutes,
-    authorized_by:currentUser.id
-   })
-   .select()
-   .single();
-
-  if(breakError){
-   console.error('Emergency break approval error:',breakError);
-   if(activeWorkSession){
-    const {data:reopened,error:reopenError}=await supabaseClient
-     .from('work_sessions')
-     .update({end_time:null,duration_minutes:null})
-     .eq('id',activeWorkSession.id)
-     .select().single();
-    if(reopenError) console.error('EMERGENCY WORK SESSION ROLLBACK ERROR',reopenError);
-    if(reopened) patchWorkSession(reopened);
+   const request=permissionRequests.find(x=>Number(x.id)===Number(id));
+   if(request){
+    request.status='approved';
+    request.decided_by=currentUser.id;
+    request.decided_at=new Date().toISOString();
    }
-   showToast('تعذر بدء استراحة الطوارئ وتمت إعادة جلسة العمل الأصلية');
+   renderPermissionRequests();
+   renderTable();
+   updateStats();
+   writeManagementLog('الموافقة على إذن',r.employee_id,r.employee_name,r.request_type).catch(()=>{});
+   showToast('تمت الموافقة وبدء استراحة الطوارئ لمدة 10 دقائق');
    return;
+  }catch(error){
+   console.error('EMERGENCY APPROVAL ERROR',error);
+   return showToast('تعذر تنفيذ استراحة الطوارئ');
   }
-  patchBreak(breakData);
  }
 
  const {error}=await supabaseClient
@@ -4874,23 +4857,6 @@ async function updatePermissionRequest(id,status){
 
  if(error){
   console.error(error);
-  // عند فشل تحديث الطلب بعد إنشاء الطارئة، نلغي البريك ونعيد جلسة العمل.
-  if(status==='approved' && r.request_type==='استراحة طارئة'){
-   const emergency=breakData;
-   if(emergency?.id){
-    await supabaseClient.from('breaks').delete().eq('id',emergency.id);
-    breaksList=breaksList.filter(b=>Number(b.id)!==Number(emergency.id));
-   }
-   if(activeWorkSession?.id){
-    const {data:reopened,error:reopenError}=await supabaseClient
-     .from('work_sessions')
-     .update({end_time:null,duration_minutes:null})
-     .eq('id',activeWorkSession.id)
-     .select().single();
-    if(reopenError) console.error('EMERGENCY REQUEST ROLLBACK ERROR',reopenError);
-    if(reopened) patchWorkSession(reopened);
-   }
-  }
   return showToast('تعذر تحديث طلب الإذن');
  }
 
@@ -4901,9 +4867,7 @@ async function updatePermissionRequest(id,status){
  renderTable();
  updateStats();
  writeManagementLog(status==='approved'?'الموافقة على إذن':'رفض إذن',r.employee_id,r.employee_name,r.request_type).catch(()=>{});
- showToast(status==='approved'
-  ? (r.request_type==='استراحة طارئة'?'تمت الموافقة وبدء استراحة الطوارئ لمدة 10 دقائق':'تمت الموافقة على الإذن')
-  : 'تم رفض الإذن');
+ showToast(status==='approved'?'تمت الموافقة على الإذن':'تم رفض الإذن');
 }
 
 let realtimeChannel = null;
@@ -6292,16 +6256,12 @@ if(document.readyState==='loading'){
 }
 </script>
 
-</body>
 <script>
 document.addEventListener('DOMContentLoaded',()=>{
   updateThemeButton();
   initEvaluationControls();
 });
-</script>
 
-</html>
-<script>
 document.addEventListener('DOMContentLoaded',()=>{
  initTheme();
  prepareDisplayModes();
@@ -6310,3 +6270,6 @@ document.addEventListener('DOMContentLoaded',()=>{
  updateThemeButton();
 });
 </script>
+
+</body>
+</html>
