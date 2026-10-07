@@ -3004,6 +3004,16 @@ async function startBreak(
   renderTable();
   updateStats();
 
+  // إرسال تحديث مباشر لباقي الواجهات فور نجاح حفظ الاستراحة،
+  // حتى يظهر البريك عند المسؤول بدون انتظار postgres_changes.
+  if(realtimeChannel){
+   realtimeChannel.send({
+    type:'broadcast',
+    event:'break_fast_update',
+    payload:{eventType:'INSERT',new:data}
+   }).catch(e=>console.warn('Fast break broadcast error:',e));
+  }
+
   writeActivity(
    employeeId,
    employee.name,
@@ -4825,6 +4835,15 @@ function subscribeRealtime(){
   realtimeChannel =
    supabaseClient
     .channel('attendance-live')
+
+    .on(
+     'broadcast',
+     {event:'break_fast_update'},
+     ({payload})=>{
+      // تحديث فوري من Broadcast قبل وصول postgres_changes.
+      applyRealtimeBreakChange(payload);
+     }
+    )
 
     .on(
      'postgres_changes',
