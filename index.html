@@ -2708,24 +2708,57 @@ async function checkIn(employeeId){
   const existing=getAttendance(employeeId);
   if(existing?.present){ showToast('الموظف مسجل حضور بالفعل'); return; }
   const now=new Date().toISOString();
+  const wasExisting=!!existing;
+  const previousRow=existing ? {...existing} : null;
   let row;
+
   if(existing){
-   const {data,error}=await supabaseClient.from('attendance').update({present:true,check_in:now,check_out:null}).eq('id',existing.id).select().single();
+   const {data,error}=await supabaseClient.from('attendance')
+    .update({present:true,check_in:now,check_out:null})
+    .eq('id',existing.id).select().single();
    if(error){console.error(error);showToast('تعذر تسجيل الحضور');return;}
    row=data;
   }else{
-   const {data,error}=await supabaseClient.from('attendance').insert({employee_id:employeeId,attendance_date:today(),present:true,check_in:now}).select().single();
+   const {data,error}=await supabaseClient.from('attendance')
+    .insert({employee_id:employeeId,attendance_date:today(),present:true,check_in:now})
+    .select().single();
    if(error){console.error(error);showToast('تعذر تسجيل الحضور');return;}
    row=data;
   }
+
   patchAttendance(row);
   const ws=await openWorkSession(employeeId,row.id,now);
   if(ws.error){
-   await supabaseClient.from('attendance').update({present:false,check_out:now}).eq('id',row.id);
-   row.present=false; row.check_out=now; patchAttendance(row);
-   showToast('تعذر بدء مؤقت وقت العمل. تأكد من إنشاء جدول work_sessions في Supabase');
-   renderTable(); updateStats(); return;
+   console.error('CHECK-IN WORK SESSION ROLLBACK',ws.error);
+
+   if(wasExisting && previousRow){
+    const {data:rollbackRow,error:rollbackError}=await supabaseClient.from('attendance')
+     .update({
+      present:previousRow.present ?? false,
+      check_in:previousRow.check_in ?? null,
+      check_out:previousRow.check_out ?? null
+     })
+     .eq('id',row.id).select().single();
+    if(rollbackError) console.error('CHECK-IN ATTENDANCE ROLLBACK ERROR',rollbackError);
+    patchAttendance(rollbackRow||previousRow);
+   }else{
+    const {error:deleteError}=await supabaseClient.from('attendance').delete().eq('id',row.id);
+    if(deleteError){
+     console.error('CHECK-IN ATTENDANCE DELETE ROLLBACK ERROR',deleteError);
+     const {data:rollbackRow}=await supabaseClient.from('attendance')
+      .update({present:false,check_in:null,check_out:null})
+      .eq('id',row.id).select().single();
+     if(rollbackRow) patchAttendance(rollbackRow);
+    }else{
+     attendanceList=attendanceList.filter(a=>Number(a.id)!==Number(row.id));
+    }
+   }
+
+   renderTable(); updateStats();
+   showToast('تعذر بدء مؤقت وقت العمل، وتم التراجع عن تسجيل الحضور');
+   return;
   }
+
   renderTable(); updateStats();
   writeActivity(employeeId,employee.name,'تسجيل حضور',null,'بدأ وقت العمل الفعلي').catch(()=>{});
   showToast('تم تسجيل الحضور وبدأ وقت العمل الفعلي');
@@ -2747,12 +2780,45 @@ async function checkOut(employeeId){
   if(!employee || !attendance) return;
   const active=getActiveBreak(employeeId);
   if(active){ showToast('يجب إنهاء الاستراحة أولاً'); return; }
+  if(!attendance.present){ showToast('الموظف غير مسجل حضور حالياً'); return; }
+
   const now=new Date().toISOString();
-  const {error}=await supabaseClient.from('attendance').update({present:false,check_out:now}).eq('id',attendance.id);
-  if(error){console.error(error);showToast('تعذر تسجيل الخروج');return;}
-  const ws=await closeWorkSession(employeeId,now);
-  if(ws.error){ showToast('تم تسجيل الخروج لكن تعذر إغلاق سجل وقت العمل'); }
-  attendance.present=false; attendance.check_out=now; patchAttendance(attendance);
+  const activeSession=getActiveWorkSession(employeeId);
+  let closedSession=null;
+
+  // أولاً نغلق جلسة العمل. إذا فشل الإغلاق لا نسجل الانصراف حتى لا تصبح البيانات متناقضة.
+  if(activeSession){
+   const ws=await closeWorkSession(employeeId,now);
+   if(ws.error){
+    showToast('تعذر إغلاق وقت العمل، ولم يتم تسجيل الانصراف');
+    return;
+   }
+   closedSession=ws.data||null;
+  }
+
+  const {data:updatedAttendance,error}=await supabaseClient.from('attendance')
+   .update({present:false,check_out:now})
+   .eq('id',attendance.id)
+   .eq('present',true)
+   .select().single();
+
+  if(error){
+   console.error('CHECK-OUT ATTENDANCE ERROR',error);
+
+   // محاولة إعادة فتح جلسة العمل إذا نجح إغلاقها لكن فشل تسجيل الانصراف.
+   if(closedSession?.id){
+    const {data:reopened,error:reopenError}=await supabaseClient.from('work_sessions')
+     .update({end_time:null,duration_minutes:null})
+     .eq('id',closedSession.id).select().single();
+    if(reopenError) console.error('CHECK-OUT WORK SESSION ROLLBACK ERROR',reopenError);
+    if(reopened) patchWorkSession(reopened);
+   }
+
+   showToast('تعذر تسجيل الخروج ولم يتم إنهاء اليوم');
+   return;
+  }
+
+  patchAttendance(updatedAttendance||{...attendance,present:false,check_out:now});
   const duration=getTodayActualWorkMinutes(employeeId);
   renderTable(); updateStats();
   writeActivity(employeeId,employee.name,'تسجيل خروج',duration+' دقيقة','تم إيقاف وقت العمل الفعلي وإغلاق اليوم').catch(()=>{});
@@ -3008,6 +3074,45 @@ async function startBreak(
    return;
   }
 
+  // طبقة تحقق ثانية بعد الحفظ لمنع سباق الضغطات المتزامنة على التدخين/العشاء.
+  // القيد النهائي يجب أن يكون أيضاً على مستوى PostgreSQL كما سيُذكر مع النسخة النهائية.
+  if(breakType==='smoking' || breakType==='dinner') {
+   const {data:activeRestrictedRows,error:verifyError}=await supabaseClient
+    .from('breaks')
+    .select('id,employee_id,break_type,start_time,end_time')
+    .is('end_time',null)
+    .in('break_type',['smoking','dinner'])
+    .order('start_time',{ascending:true})
+    .order('id',{ascending:true});
+
+   if(verifyError){
+    console.error('RESTRICTED BREAK VERIFY ERROR',verifyError);
+    // لا نسمح ببقاء الاستراحة إذا تعذر التحقق من قاعدة منع الاستراحات المتزامنة.
+    await supabaseClient.from('breaks').delete().eq('id',data.id);
+    breaksList=breaksList.filter(b=>Number(b.id)!==Number(data.id));
+    const attendance=getAttendance(employeeId);
+    if(attendance?.present) await openWorkSession(employeeId,attendance.id,new Date().toISOString()).catch(()=>{});
+    showToast('تعذر التحقق من استراحة التدخين/العشاء، ولم تبدأ الاستراحة');
+    return;
+   }
+
+   const winner=activeRestrictedRows?.[0];
+   if(winner && Number(winner.id)!==Number(data.id)){
+    const {error:rollbackError}=await supabaseClient.from('breaks').delete().eq('id',data.id);
+    if(rollbackError){
+     console.error('RESTRICTED BREAK ROLLBACK ERROR',rollbackError);
+     showToast('يوجد موظف آخر في استراحة التدخين/العشاء حالياً');
+    }else{
+     breaksList=breaksList.filter(b=>Number(b.id)!==Number(data.id));
+     const attendance=getAttendance(employeeId);
+     if(attendance?.present) await openWorkSession(employeeId,attendance.id,new Date().toISOString()).catch(()=>{});
+     const otherEmployee=employeesList.find(e=>Number(e.id)===Number(winner.employee_id));
+     showToast(`لا يمكن بدء الاستراحة الآن: ${otherEmployee?.name||'موظف آخر'} لديه استراحة ${winner.break_type==='smoking'?'تدخين':'عشاء'}`);
+    }
+    return;
+   }
+  }
+
   patchBreak(data);
   renderTable();
   updateStats();
@@ -3122,12 +3227,24 @@ async function finishBreak(breakId){
   }).catch(e=>console.warn('Fast break return broadcast error:',e));
  }
 
- // فتح جلسة العمل بالخلفية حتى لا تتأخر عودة الموظف أمام المسؤول.
+ // يجب فتح جلسة العمل قبل اعتماد انتهاء البريك نهائياً؛ وإلا سيبقى الموظف حاضرًا بلا وقت عمل فعلي.
  const attendance=getAttendance(active.employee_id);
  if(attendance?.present){
-  openWorkSession(active.employee_id,attendance.id,now).then(ws=>{
-   if(ws?.error) showToast('تمت العودة لكن تعذر بدء وقت العمل الجديد');
-  }).catch(()=>showToast('تمت العودة لكن تعذر بدء وقت العمل الجديد'));
+  const reopened=await openWorkSession(active.employee_id,attendance.id,now);
+  if(reopened?.error){
+   console.error('FINISH BREAK WORK SESSION ERROR',reopened.error);
+
+   // تراجع عن إنهاء البريك حتى لا تصبح حالة الموظف غير متناسقة.
+   const {data:rollbackBreak,error:rollbackError}=await supabaseClient.from('breaks')
+    .update({end_time:null,actual_minutes:null,overage_minutes:null})
+    .eq('id',active.id).select().single();
+   if(rollbackError) console.error('FINISH BREAK ROLLBACK ERROR',rollbackError);
+   if(rollbackBreak) patchBreak(rollbackBreak);
+   else { active.end_time=null; active.actual_minutes=null; active.overage_minutes=null; patchBreak(active); }
+   renderTable(); updateStats();
+   showToast('تعذر إعادة بدء وقت العمل، وتم إبقاء الاستراحة مفتوحة');
+   return;
+  }
  }
 
  writeActivity(active.employee_id,employee?.name||'','إنهاء استراحة',actual+' دقيقة',overage>0?`تجاوز ${overage} دقيقة`:'ضمن الوقت المحدد').catch(()=>{});
@@ -3837,17 +3954,13 @@ async function resetAllEmployeeWorkTimes(){
  if(!confirm('⚠️ سيتم تصفير أوقات العمل الفعلية والاستراحات والحضور التجريبي لليوم لجميع الموظفين.\n\nلن يتم حذف الموظفين أو الحسابات أو إعدادات التقييم.\n\nهل تريد المتابعة؟')) return;
  const d=today();
  try{
-  const {error:wsError}=await supabaseClient.from('work_sessions').delete().gte('start_time',d+'T00:00:00');
-  if(wsError) throw new Error('work_sessions: '+wsError.message);
-  const {error:breakError}=await supabaseClient.from('breaks').delete().gte('start_time',d+'T00:00:00');
-  if(breakError) throw new Error('breaks: '+breakError.message);
-  const {error:attendanceError}=await supabaseClient.from('attendance').update({present:false,check_in:null,check_out:null}).eq('attendance_date',d);
-  if(attendanceError) throw new Error('attendance: '+attendanceError.message);
-  workSessionsList=workSessionsList.filter(s=>!String(s.start_time||'').startsWith(d));
-  breaksList=breaksList.filter(b=>!String(b.start_time||'').startsWith(d));
-  attendanceList=attendanceList.filter(a=>String(a.attendance_date||'')!==d);
+  const {error}=await supabaseClient.rpc('reset_work_times_today',{p_performed_by:currentUser.id});
+  if(error) throw error;
+  attendanceList=[];
+  workSessionsList=[];
+  breaksList=[];
+  permissionRequests=permissionRequests.filter(r=>String(r.created_at||'').slice(0,10)!==d);
   renderTable(); updateStats();
-  writeManagementLog(null,null,'تصفير أوقات العمل والاستراحات','تم تصفير أوقات العمل والاستراحات والحضور التجريبي لليوم لجميع الموظفين').catch(()=>{});
   showToast('تم تصفير أوقات العمل والاستراحات بنجاح');
  }catch(error){
   console.error('RESET WORK TIMES ERROR',error);
@@ -3860,7 +3973,7 @@ async function resetAllTestData(){
  if(!confirm('⚠️ سيتم حذف بيانات التشغيل التجريبية: الحضور والاستراحات والمخالفات والأذونات وجلسات العمل وسجلات النشاط والإدارة.\n\nلن يتم حذف الموظفين أو حساباتهم أو إعدادات الخصومات.\n\nهل تريد المتابعة؟')) return;
  const typed=prompt('للتأكيد النهائي اكتب كلمة: تصفير');
  if(typed!=='تصفير') return showToast('تم إلغاء عملية التصفير');
- const {error}=await supabaseClient.rpc('reset_test_data');
+ const {error}=await supabaseClient.rpc('reset_test_data',{p_performed_by:currentUser.id});
  if(error){
   console.error(error);
   return showToast('تعذر تصفير بيانات التجربة: '+(error.message||''));
@@ -3870,8 +3983,7 @@ async function resetAllTestData(){
  permissionRequests=[];
  workSessionsList=[];
  weeklyReportRows=[];
- try{ await writeManagementLog(null,null,'تصفير بيانات التجربة','تم حذف بيانات الحضور والاستراحات والمخالفات والأذونات وجلسات العمل وسجلات النشاط والإدارة'); }catch(e){}
- showToast('تم تصفير بيانات التجربة بنجاح');
+ showToast('تم تصفير بيانات التجربة بنجاح وتم تسجيل العملية في سجل الإدارة');
  setTimeout(()=>location.reload(),700);
 }
 
@@ -4698,46 +4810,39 @@ async function submitPermissionRequest(){
 
 async function updatePermissionRequest(id,status){
  if(!isManagement()) return;
-
- const r =
-  permissionRequests.find(
-   x=>Number(x.id)===Number(id)
-  );
-
+ const r=permissionRequests.find(x=>Number(x.id)===Number(id));
  if(!r) return;
+ if(status==='rejected' && !confirm('هل تريد رفض طلب الإذن؟')) return;
 
- if(status==='rejected' &&
-    !confirm('هل تريد رفض طلب الإذن؟'))
-  return;
-
- if(
-  status==='approved' &&
-  r.request_type==='استراحة طارئة'
- ){
-
-  const attendance =
-   getAttendance(r.employee_id);
-
+ if(status==='approved' && r.request_type==='استراحة طارئة'){
+  const attendance=getAttendance(r.employee_id);
   if(!attendance?.present){
    showToast('لا يمكن الموافقة: الموظف غير مسجل حضور');
    return;
   }
-
   if(getActiveBreak(r.employee_id)){
    showToast('لا يمكن الموافقة: لدى الموظف استراحة نشطة بالفعل');
    return;
   }
 
-  const {
-   data:breakData,
-   error:breakError
-  } =
-  await supabaseClient
+  // الطارئة يجب أن توقف جلسة العمل الحالية حتى لا يُحتسب وقتها كوقت عمل.
+  const now=new Date().toISOString();
+  const activeWorkSession=getActiveWorkSession(r.employee_id);
+  if(activeWorkSession){
+   const {error:closeError}=await closeWorkSession(r.employee_id,now);
+   if(closeError){
+    console.error('EMERGENCY CLOSE WORK SESSION ERROR',closeError);
+    showToast('تعذر إيقاف وقت العمل قبل بدء استراحة الطوارئ');
+    return;
+   }
+  }
+
+  const {data:breakData,error:breakError}=await supabaseClient
    .from('breaks')
    .insert({
     employee_id:r.employee_id,
     break_type:'emergency',
-    start_time:new Date().toISOString(),
+    start_time:now,
     allowed_minutes:BREAK_RULES.emergency.minutes,
     authorized_by:currentUser.id
    })
@@ -4745,61 +4850,60 @@ async function updatePermissionRequest(id,status){
    .single();
 
   if(breakError){
-   console.error(
-    'Emergency break approval error:',
-    breakError
-   );
-   showToast('تعذر بدء استراحة الطوارئ');
+   console.error('Emergency break approval error:',breakError);
+   if(activeWorkSession){
+    const {data:reopened,error:reopenError}=await supabaseClient
+     .from('work_sessions')
+     .update({end_time:null,duration_minutes:null})
+     .eq('id',activeWorkSession.id)
+     .select().single();
+    if(reopenError) console.error('EMERGENCY WORK SESSION ROLLBACK ERROR',reopenError);
+    if(reopened) patchWorkSession(reopened);
+   }
+   showToast('تعذر بدء استراحة الطوارئ وتمت إعادة جلسة العمل الأصلية');
    return;
   }
-
   patchBreak(breakData);
  }
 
- const {
-  error
- } =
- await supabaseClient
+ const {error}=await supabaseClient
   .from('permission_requests')
-  .update({
-   status,
-   decided_by:currentUser.id,
-   decided_at:new Date().toISOString()
-  })
+  .update({status,decided_by:currentUser.id,decided_at:new Date().toISOString()})
   .eq('id',id)
   .eq('status','pending');
 
  if(error){
   console.error(error);
+  // عند فشل تحديث الطلب بعد إنشاء الطارئة، نلغي البريك ونعيد جلسة العمل.
+  if(status==='approved' && r.request_type==='استراحة طارئة'){
+   const emergency=breakData;
+   if(emergency?.id){
+    await supabaseClient.from('breaks').delete().eq('id',emergency.id);
+    breaksList=breaksList.filter(b=>Number(b.id)!==Number(emergency.id));
+   }
+   if(activeWorkSession?.id){
+    const {data:reopened,error:reopenError}=await supabaseClient
+     .from('work_sessions')
+     .update({end_time:null,duration_minutes:null})
+     .eq('id',activeWorkSession.id)
+     .select().single();
+    if(reopenError) console.error('EMERGENCY REQUEST ROLLBACK ERROR',reopenError);
+    if(reopened) patchWorkSession(reopened);
+   }
+  }
   return showToast('تعذر تحديث طلب الإذن');
  }
 
  r.status=status;
  r.decided_by=currentUser.id;
  r.decided_at=new Date().toISOString();
-
  renderPermissionRequests();
  renderTable();
  updateStats();
-
- writeManagementLog(
-  status==='approved'
-   ? 'الموافقة على إذن'
-   : 'رفض إذن',
-  r.employee_id,
-  r.employee_name,
-  r.request_type
- ).catch(()=>{});
-
- showToast(
-  status==='approved'
-   ? (
-      r.request_type==='استراحة طارئة'
-       ? 'تمت الموافقة وبدء استراحة الطوارئ لمدة 10 دقائق'
-       : 'تمت الموافقة على الإذن'
-     )
-   : 'تم رفض الإذن'
- );
+ writeManagementLog(status==='approved'?'الموافقة على إذن':'رفض إذن',r.employee_id,r.employee_name,r.request_type).catch(()=>{});
+ showToast(status==='approved'
+  ? (r.request_type==='استراحة طارئة'?'تمت الموافقة وبدء استراحة الطوارئ لمدة 10 دقائق':'تمت الموافقة على الإذن')
+  : 'تم رفض الإذن');
 }
 
 let realtimeChannel = null;
@@ -5096,6 +5200,15 @@ function sumWorkSessions(sessions,from,to){
 }
 
 
+function complianceScoreForPeriod(employee, breakRows){
+ const override=employee?.compliance_override;
+ if(override!==null && override!==undefined && Number.isFinite(Number(override))){
+  return Math.max(0,Math.min(100,Math.round(Number(override))));
+ }
+ const totalOverage=(breakRows||[]).reduce((sum,b)=>sum+Number(b.overage_minutes||0),0);
+ return Math.max(0,Math.min(100,Math.round(100-totalOverage)));
+}
+
 function automaticWeeklyRating(compliance,overageMinutes){
  if(compliance>=95 && overageMinutes===0) return 'ممتاز';
  if(compliance>=90) return 'جيد جداً';
@@ -5259,7 +5372,7 @@ async function generateEmployeeEvaluation(fromArg,toArg,empArg){
  const from=fromArg||document.getElementById('evaluationFrom').value,to=toArg||document.getElementById('evaluationTo').value,employeeId=empArg!==undefined?empArg:document.getElementById('evaluationEmployee').value;if(!from||!to)return showToast('حدد تاريخ البداية والنهاية');if(from>to)return showToast('تاريخ البداية يجب أن يكون قبل النهاية');
  try{
   await loadEvaluationPenaltySettings();await syncAutomaticBreakViolations(from,to,employeeId);const employees=(isManagement()?allEmployeesList:employeesList)||[],selected=employeeId?employees.filter(e=>String(e.id)===String(employeeId)):employees,current=await loadReportData(from,to),violations=await loadViolations(from,to,employeeId),permissions=await loadEvaluationPermissions(from,to,employeeId),days=reportPeriodDays(from,to),area=document.getElementById('employeeEvaluationArea');
-  const cards=selected.map(e=>{const v=violations.filter(x=>Number(x.employee_id)===Number(e.id)),attendance=current.attendance.filter(a=>Number(a.employee_id)===Number(e.id)),breaks=current.breaks.filter(b=>Number(b.employee_id)===Number(e.id)),perms=permissions.filter(p=>Number(p.employee_id)===Number(e.id)),penalty=v.reduce((s,x)=>s+Number(x.points||0),0),compliance=Math.max(0,100-penalty),presentDays=new Set(attendance.filter(a=>a.check_in).map(a=>a.attendance_date)).size,absentDays=new Set(v.filter(x=>x.violation_type==='غياب بدون إذن').map(x=>x.violation_date)).size,breakOverages=v.filter(x=>x.violation_type==='تجاوز الاستراحة').length,unnotifiedExits=v.filter(x=>x.violation_type==='خروج بدون تبليغ').length,unauthorizedAbsences=v.filter(x=>x.violation_type==='غياب بدون إذن').length,lateness=v.filter(x=>x.violation_type==='تأخير').length,missingBreak=v.filter(x=>x.violation_type==='نسيان تسجيل الاستراحة').length,breakCount=breaks.length,overageMinutes=breaks.reduce((s,b)=>s+Number(b.overage_minutes||0),0),approvedPermissions=perms.filter(p=>['approved','موافق','مقبول'].includes(String(p.status||'').trim().toLowerCase())).length;return{e,penalty,compliance,v,perms,presentDays,absentDays,breakOverages,unnotifiedExits,unauthorizedAbsences,lateness,missingBreak,breakCount,overageMinutes,approvedPermissions,days};});
+  const cards=selected.map(e=>{const v=violations.filter(x=>Number(x.employee_id)===Number(e.id)),attendance=current.attendance.filter(a=>Number(a.employee_id)===Number(e.id)),breaks=current.breaks.filter(b=>Number(b.employee_id)===Number(e.id)),perms=permissions.filter(p=>Number(p.employee_id)===Number(e.id)),penalty=v.reduce((s,x)=>s+Number(x.points||0),0),compliance=complianceScoreForPeriod(e,breaks),presentDays=new Set(attendance.filter(a=>a.check_in).map(a=>a.attendance_date)).size,absentDays=new Set(v.filter(x=>x.violation_type==='غياب بدون إذن').map(x=>x.violation_date)).size,breakOverages=v.filter(x=>x.violation_type==='تجاوز الاستراحة').length,unnotifiedExits=v.filter(x=>x.violation_type==='خروج بدون تبليغ').length,unauthorizedAbsences=v.filter(x=>x.violation_type==='غياب بدون إذن').length,lateness=v.filter(x=>x.violation_type==='تأخير').length,missingBreak=v.filter(x=>x.violation_type==='نسيان تسجيل الاستراحة').length,breakCount=breaks.length,overageMinutes=breaks.reduce((s,b)=>s+Number(b.overage_minutes||0),0),approvedPermissions=perms.filter(p=>['approved','موافق','مقبول'].includes(String(p.status||'').trim().toLowerCase())).length;return{e,penalty,compliance,v,perms,presentDays,absentDays,breakOverages,unnotifiedExits,unauthorizedAbsences,lateness,missingBreak,breakCount,overageMinutes,approvedPermissions,days};});
   area.innerHTML=cards.length?cards.map(x=>`<div class="evaluation-row"><div class="evaluation-name"><span>👤 ${esc(x.e.name)}</span><span class="badge badge-blue">${esc(from)} → ${esc(to)}</span></div><div class="summary-box"><small>الالتزام</small><strong class="${x.compliance>=80?'success':x.compliance>=60?'warning':'danger'}">${x.compliance}%</strong></div><div class="summary-box"><small>⚠️ المخالفات</small><strong>${x.v.length}</strong></div><div class="summary-box"><small>⏱️ تجاوز الاستراحة</small><strong>${x.breakOverages}</strong><small>${x.overageMinutes} د</small></div><div class="summary-box"><small>🚪 خروج بدون تبليغ</small><strong>${x.unnotifiedExits}</strong></div><div class="summary-box"><small>❌ غياب بدون إذن</small><strong>${x.unauthorizedAbsences}</strong></div><div class="summary-box"><small>🕐 التأخير</small><strong>${x.lateness}</strong></div><div class="summary-box"><small>☕ الاستراحات</small><strong>${x.breakCount}</strong></div><div class="summary-box"><small>📋 الأذونات</small><strong>${x.perms.length}</strong><small>موافق: ${x.approvedPermissions}</small></div><div class="summary-box"><small>⭐ التقييم</small><strong class="${x.compliance>=80?'success':x.compliance>=60?'warning':'danger'}">${evaluationRating(x.compliance)}</strong></div><div class="summary-box"><small>📉 الخصم</small><strong class="danger">-${x.penalty}</strong></div></div>`).join(''):'<p class="muted">لا توجد بيانات للموظف المحدد.</p>';
   await renderViolations(from,to,employeeId);
  }catch(e){console.error(e);showToast('تعذر استخراج التقييم: '+(e.message||''));}
@@ -5322,16 +5435,8 @@ async function generateWeeklyReport(){
    const previousBreakCount=prevBreaks.length;
    const previousOverageMinutes=prevBreaks.reduce((sum,b)=>sum+Number(b.overage_minutes||0),0);
 
-   const score=employee.compliance_override!==null && employee.compliance_override!==undefined
-    ? Number(employee.compliance_override)
-    : Math.max(0,Math.round(100-overageMinutes));
-
-   const previousScore=previousOverageMinutes>0
-    ? Math.max(0,Math.round(100-previousOverageMinutes))
-    : 100;
-
-   const compliance=Math.max(0,Math.min(100,Math.round(score)));
-   const previousCompliance=Math.max(0,Math.min(100,Math.round(previousScore)));
+   const compliance=complianceScoreForPeriod(employee,empBreaks);
+   const previousCompliance=complianceScoreForPeriod(employee,prevBreaks);
    const automaticRating=automaticWeeklyRating(compliance,overageMinutes);
    const review=reviews.get(String(employee.id))||null;
 
