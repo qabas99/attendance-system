@@ -419,6 +419,15 @@ tbody tr:last-child td{border-bottom:0}
  gap:10px;
 }
 
+.evaluation-controls{display:grid;grid-template-columns:1.1fr 1.1fr 1.35fr auto auto auto auto;gap:10px;align-items:end;}
+.evaluation-date-field{display:flex;flex-direction:column;gap:6px;min-width:0;}
+.evaluation-date-field label{font-size:12px;font-weight:700;}
+.evaluation-row{display:grid;grid-template-columns:minmax(150px,1.4fr) repeat(9,minmax(80px,1fr));gap:8px;align-items:stretch;padding:10px;border:1px solid #2b3d59;border-radius:12px;background:#111c2f;margin-bottom:10px;}
+.evaluation-row .evaluation-name{display:flex;flex-direction:column;justify-content:center;gap:5px;font-weight:700;}
+.evaluation-row .summary-box{margin:0;padding:10px 7px;min-width:0;}
+.evaluation-row .summary-box strong{font-size:18px;}
+.evaluation-row .summary-box small{font-size:11px;}
+
 .report-summary{
  display:grid;
  grid-template-columns:repeat(5,1fr);
@@ -606,6 +615,9 @@ tbody tr:last-child td{border-bottom:0}
 .success{
  color:#34d399;
 }
+
+@media(max-width:1100px){.evaluation-controls{grid-template-columns:1fr 1fr 1fr 1fr;}.evaluation-row{grid-template-columns:1.3fr repeat(5,1fr);}}
+@media(max-width:800px){.evaluation-controls{grid-template-columns:1fr;}.evaluation-row{grid-template-columns:1fr 1fr;}.evaluation-row .evaluation-name{grid-column:1/-1;}}
 
 @media(max-width:1000px){
  .stats{grid-template-columns:repeat(2,1fr)}
@@ -1428,6 +1440,8 @@ html[data-theme="dark"] .weekly-color-control label{color:#e5edf8 !important}
   <div class="actions" style="margin-bottom:10px">
    <button class="btn-blue management-only" onclick="loadAccountProfiles()">تحديث قائمة الحسابات</button>
    <button class="btn-orange management-only" onclick="resetAllEmployeeBreaks()">♻️ تصفير استراحات الجميع</button>
+   <button class="btn-purple management-only" onclick="resetAllEmployeeWorkTimes()">⏱️ تصفير أوقات العمل</button>
+   <button class="btn-red management-only" onclick="resetAllTestData()">🧹 تصفير بيانات التجربة</button>
   </div>
   <div style="overflow-x:auto;margin-top:12px">
    <table>
@@ -1577,6 +1591,65 @@ html[data-theme="dark"] .weekly-color-control label{color:#e5edf8 !important}
 
   <div id="reportArea" style="margin-top:18px"></div>
 
+ </div>
+
+
+ <!-- تقييم الموظفين والمخالفات -->
+ <div class="card" id="employeeEvaluationSection">
+  <h2>📊 تقييم الموظفين والمخالفات</h2>
+  <div class="evaluation-controls">
+   <div class="evaluation-date-field">
+    <label for="evaluationFrom">من تاريخ</label>
+    <input type="date" id="evaluationFrom">
+   </div>
+   <div class="evaluation-date-field">
+    <label for="evaluationTo">إلى تاريخ</label>
+    <input type="date" id="evaluationTo">
+   </div>
+   <div class="evaluation-date-field">
+    <label for="evaluationEmployee">الموظف</label>
+    <select id="evaluationEmployee"><option value="">كل الموظفين</option></select>
+   </div>
+   <button class="btn-blue" onclick="generateEmployeeEvaluation()">استخراج التقييم</button>
+   <button class="btn-green" onclick="setEvaluationToday()">اليوم</button>
+   <button class="btn-green" onclick="setEvaluationLast7Days()">آخر 7 أيام</button>
+   <button class="btn-green" onclick="setEvaluationThisMonth()">هذا الشهر</button>
+  </div>
+  <div class="card management-only" style="margin-top:12px;padding:14px;background:var(--surface2,#f8fafc)" id="evaluationPenaltySettings">
+   <h3 style="margin:0 0 10px">⚙️ خصومات المخالفات القابلة للتعديل</h3>
+   <div class="report-controls" style="grid-template-columns:repeat(4,1fr)">
+    <label>خروج بدون تبليغ <input type="number" id="penaltyUnnotifiedExit" min="0" max="100" value="5"></label>
+    <label>تجاوز الاستراحة <input type="number" id="penaltyBreakOverage" min="0" max="100" value="3"></label>
+    <label>غياب بدون إذن <input type="number" id="penaltyUnauthorizedAbsence" min="0" max="100" value="10"></label>
+    <label>نسيان تسجيل الاستراحة <input type="number" id="penaltyBreakMissing" min="0" max="100" value="2"></label>
+   </div>
+   <div class="actions" style="margin-top:10px;justify-content:flex-start">
+    <button class="btn-purple" onclick="saveEvaluationPenaltySettings()">💾 حفظ الخصومات</button>
+    <span class="muted">القيم تُحفظ في Supabase وتطبق على التقييمات الجديدة.</span>
+   </div>
+  </div>
+  <div class="toolbar management-only" style="margin-top:10px">
+   <select id="violationEmployee"></select>
+   <select id="violationType">
+    <option value="خروج بدون تبليغ">خروج بدون تبليغ</option>
+    <option value="تجاوز الاستراحة">تجاوز الاستراحة</option>
+    <option value="غياب بدون إذن">غياب بدون إذن</option>
+    <option value="تأخير">تأخير</option>
+    <option value="نسيان تسجيل الاستراحة">نسيان تسجيل الاستراحة</option>
+    <option value="أخرى">أخرى</option>
+   </select>
+   <input type="number" id="violationPoints" min="0" max="100" value="5" placeholder="نقاط الخصم">
+   <input type="date" id="violationDate">
+   <input type="text" id="violationNote" placeholder="ملاحظة المخالفة">
+   <button class="btn-red" onclick="addEmployeeViolation()">➕ إضافة مخالفة</button>
+  </div>
+  <div id="employeeEvaluationArea" style="margin-top:18px"><p class="muted">حدد الفترة ثم اضغط استخراج التقييم.</p></div>
+  <div class="table-wrap" style="margin-top:18px">
+   <table>
+    <thead><tr><th>التاريخ</th><th>الموظف</th><th>المخالفة</th><th>الخصم</th><th>التفاصيل</th><th>المصدر</th><th class="management-only">الإجراء</th></tr></thead>
+    <tbody id="violationsBody"><tr><td colspan="7">لا توجد مخالفات ضمن الفترة</td></tr></tbody>
+   </table>
+  </div>
  </div>
 
  <!-- سجل الإدارة -->
@@ -2284,6 +2357,7 @@ async function loadAllData(options={}){
  if(currentUser) jobs.push(loadPermissionRequests());
  await Promise.all(jobs);
  populateEmployeeSelects(); renderTable(); updateStats(); renderPermissionRequests();
+ if(document.getElementById('employeeEvaluationSection')){ fillEvaluationEmployees(); loadEvaluationPenaltySettings(); }
  if(isAdmin() && options.accounts) loadAccountProfiles();
 }
 
@@ -2486,6 +2560,52 @@ function getActiveBreak(employeeId){
 
 }
 
+async function getActiveSmokingOrDinnerBreak(){
+ const local=breaksList.find(b=>
+  !b.end_time &&
+  (b.break_type==='smoking' || b.break_type==='dinner')
+ );
+ if(local) return {data:local,error:null};
+
+ const {data,error}=await supabaseClient
+  .from('breaks')
+  .select('*')
+  .is('end_time',null)
+  .in('break_type',['smoking','dinner'])
+  .limit(1);
+
+ if(error){
+  console.error('ACTIVE SMOKING/DINNER BREAK CHECK ERROR',error);
+  return {data:null,error};
+ }
+
+ return {data:(data||[])[0]||null,error:null};
+}
+
+async function getGlobalActiveBreak(excludeEmployeeId=null){
+ const local=breaksList.find(b=>
+  !b.end_time &&
+  (excludeEmployeeId===null || Number(b.employee_id)!==Number(excludeEmployeeId))
+ );
+ if(local) return {data:local,error:null};
+
+ const {data,error}=await supabaseClient
+  .from('breaks')
+  .select('*')
+  .is('end_time',null)
+  .limit(1);
+
+ if(error){
+  console.error('GLOBAL ACTIVE BREAK CHECK ERROR',error);
+  return {data:null,error};
+ }
+
+ const active=(data||[]).find(b=>
+  excludeEmployeeId===null || Number(b.employee_id)!==Number(excludeEmployeeId)
+ );
+ return {data:active||null,error:null};
+}
+
 
 /* =========================================================
    ACTUAL WORK SESSIONS
@@ -2672,6 +2792,31 @@ async function startBreak(
   if(getActiveBreak(employeeId)){
    showToast('لدى الموظف استراحة نشطة بالفعل');
    return;
+  }
+
+  // المنع يخص التدخين والعشاء فقط. الطارئة والمصرح بها مستثنات.
+  if(breakType==='smoking' || breakType==='dinner'){
+   const activeRestrictedBreak = await getActiveSmokingOrDinnerBreak();
+   if(activeRestrictedBreak.error){
+    showToast('تعذر التحقق من استراحة التدخين أو العشاء الحالية');
+    return;
+   }
+   if(
+    activeRestrictedBreak.data &&
+    Number(activeRestrictedBreak.data.employee_id)!==Number(employeeId)
+   ){
+    const otherEmployee = employeesList.find(
+     e=>Number(e.id)===Number(activeRestrictedBreak.data.employee_id)
+    );
+    const breakName =
+     activeRestrictedBreak.data.break_type==='smoking'
+      ? 'تدخين'
+      : 'عشاء';
+    showToast(
+     `لا يمكن بدء ${breakType==='smoking'?'استراحة التدخين':'استراحة العشاء'} الآن: ${otherEmployee?.name || 'موظف آخر'} في استراحة ${breakName}. انتظر عودته.`
+    );
+    return;
+   }
   }
 
   if(breakType === 'emergency'){
@@ -3671,6 +3816,49 @@ async function resetAllEmployeeBreaks(){
  renderTable(); updateStats();
  writeManagementLog(null,null,'تصفير الاستراحات','تم تصفير جميع استراحات جميع الموظفين لليوم').catch(()=>{});
  showToast('تم تصفير استراحات الجميع');
+}
+
+async function resetAllEmployeeWorkTimes(){
+ if(!isManagement()) return showToast('ليس لديك صلاحية تصفير أوقات العمل');
+ if(!confirm('⚠️ سيتم تصفير أوقات العمل الفعلية والاستراحات والحضور التجريبي لليوم لجميع الموظفين.\n\nلن يتم حذف الموظفين أو الحسابات أو إعدادات التقييم.\n\nهل تريد المتابعة؟')) return;
+ const d=today();
+ try{
+  const {error:wsError}=await supabaseClient.from('work_sessions').delete().gte('start_time',d+'T00:00:00');
+  if(wsError) throw new Error('work_sessions: '+wsError.message);
+  const {error:breakError}=await supabaseClient.from('breaks').delete().gte('start_time',d+'T00:00:00');
+  if(breakError) throw new Error('breaks: '+breakError.message);
+  const {error:attendanceError}=await supabaseClient.from('attendance').update({present:false,check_in:null,check_out:null}).eq('attendance_date',d);
+  if(attendanceError) throw new Error('attendance: '+attendanceError.message);
+  workSessionsList=workSessionsList.filter(s=>!String(s.start_time||'').startsWith(d));
+  breaksList=breaksList.filter(b=>!String(b.start_time||'').startsWith(d));
+  attendanceList=attendanceList.filter(a=>String(a.attendance_date||'')!==d);
+  renderTable(); updateStats();
+  writeManagementLog(null,null,'تصفير أوقات العمل والاستراحات','تم تصفير أوقات العمل والاستراحات والحضور التجريبي لليوم لجميع الموظفين').catch(()=>{});
+  showToast('تم تصفير أوقات العمل والاستراحات بنجاح');
+ }catch(error){
+  console.error('RESET WORK TIMES ERROR',error);
+  showToast('تعذر تصفير أوقات العمل: '+(error?.message||error));
+ }
+}
+
+async function resetAllTestData(){
+ if(!isManagement()) return showToast('ليس لديك صلاحية تصفير بيانات التجربة');
+ if(!confirm('⚠️ سيتم حذف بيانات التشغيل التجريبية: الحضور والاستراحات والمخالفات والأذونات وجلسات العمل وسجلات النشاط والإدارة.\n\nلن يتم حذف الموظفين أو حساباتهم أو إعدادات الخصومات.\n\nهل تريد المتابعة؟')) return;
+ const typed=prompt('للتأكيد النهائي اكتب كلمة: تصفير');
+ if(typed!=='تصفير') return showToast('تم إلغاء عملية التصفير');
+ const {error}=await supabaseClient.rpc('reset_test_data');
+ if(error){
+  console.error(error);
+  return showToast('تعذر تصفير بيانات التجربة: '+(error.message||''));
+ }
+ attendanceList=[];
+ breaksList=[];
+ permissionRequests=[];
+ workSessionsList=[];
+ weeklyReportRows=[];
+ try{ await writeManagementLog(null,null,'تصفير بيانات التجربة','تم حذف بيانات الحضور والاستراحات والمخالفات والأذونات وجلسات العمل وسجلات النشاط والإدارة'); }catch(e){}
+ showToast('تم تصفير بيانات التجربة بنجاح');
+ setTimeout(()=>location.reload(),700);
 }
 
 
@@ -4928,6 +5116,115 @@ async function loadWeeklyReviews(from,to){
  return map;
 }
 
+
+/* =========================================================
+   EMPLOYEE EVALUATION + VIOLATIONS
+========================================================= */
+
+const DEFAULT_EVALUATION_PENALTIES = {
+ 'خروج بدون تبليغ':5, 'تجاوز الاستراحة':3, 'غياب بدون إذن':10,
+ 'نسيان تسجيل الاستراحة':2, 'تأخير':1, 'أخرى':1
+};
+let evaluationPenalties={...DEFAULT_EVALUATION_PENALTIES};
+
+function focusEvaluationCustomRange(){
+ const el=document.getElementById('evaluationFrom');
+ if(el){el.focus();el.scrollIntoView({behavior:'smooth',block:'center'});}
+}
+
+async function loadEvaluationPenaltySettings(){
+ try{
+  const {data,error}=await supabaseClient.from('evaluation_penalty_settings').select('violation_type,points');
+  if(error) throw error;
+  evaluationPenalties={...DEFAULT_EVALUATION_PENALTIES};
+  (data||[]).forEach(r=>evaluationPenalties[r.violation_type]=Math.max(0,Number(r.points||0)));
+ }catch(e){ evaluationPenalties={...DEFAULT_EVALUATION_PENALTIES}; }
+ const map={'خروج بدون تبليغ':'penaltyUnnotifiedExit','تجاوز الاستراحة':'penaltyBreakOverage','غياب بدون إذن':'penaltyUnauthorizedAbsence','نسيان تسجيل الاستراحة':'penaltyBreakMissing'};
+ Object.entries(map).forEach(([type,id])=>{const el=document.getElementById(id);if(el)el.value=evaluationPenalties[type]??DEFAULT_EVALUATION_PENALTIES[type];});
+ syncViolationPointInput();
+}
+
+async function saveEvaluationPenaltySettings(){
+ if(!isManagement()) return showToast('ليس لديك صلاحية تعديل الخصومات');
+ const map={'خروج بدون تبليغ':'penaltyUnnotifiedExit','تجاوز الاستراحة':'penaltyBreakOverage','غياب بدون إذن':'penaltyUnauthorizedAbsence','نسيان تسجيل الاستراحة':'penaltyBreakMissing'};
+ const rows=Object.entries(map).map(([violation_type,id])=>({violation_type,points:Math.max(0,Math.min(100,Math.round(Number(document.getElementById(id)?.value||0)))),updated_by:currentUser?.id||null,updated_at:new Date().toISOString()}));
+ const {error}=await supabaseClient.from('evaluation_penalty_settings').upsert(rows,{onConflict:'violation_type'});
+ if(error){console.error(error);return showToast('تعذر حفظ الخصومات — نفذ SQL الخاص بإعدادات التقييم أولاً');}
+ await loadEvaluationPenaltySettings();
+ await writeManagementLog('تعديل خصومات التقييم',null,null,JSON.stringify(rows));
+ showToast('تم حفظ خصومات التقييم');
+}
+
+function syncViolationPointInput(){
+ const type=document.getElementById('violationType')?.value, input=document.getElementById('violationPoints');
+ if(input&&type) input.value=evaluationPenalties[type]??DEFAULT_EVALUATION_PENALTIES[type]??1;
+}
+
+function initEvaluationControls(){
+ const d=today();
+ ['evaluationFrom','evaluationTo','violationDate'].forEach(id=>{const el=document.getElementById(id);if(el&&!el.value)el.value=d;});
+ fillEvaluationEmployees();
+ const type=document.getElementById('violationType'); if(type&&!type.dataset.bound){type.addEventListener('change',syncViolationPointInput);type.dataset.bound='1';}
+ loadEvaluationPenaltySettings();
+}
+
+function fillEvaluationEmployees(){
+ const employees=(isManagement()?allEmployeesList:employeesList)||[];
+ ['evaluationEmployee','violationEmployee'].forEach(id=>{const el=document.getElementById(id);if(!el)return;const old=el.value;el.innerHTML=id==='evaluationEmployee'?'<option value="">كل الموظفين</option>':'';employees.forEach(e=>{const o=document.createElement('option');o.value=e.id;o.textContent=e.name;el.appendChild(o);});if([...el.options].some(o=>o.value===old))el.value=old;});
+}
+function setEvaluationToday(){const d=today();document.getElementById('evaluationFrom').value=d;document.getElementById('evaluationTo').value=d;generateEmployeeEvaluation();}
+function setEvaluationLast7Days(){const to=today(),from=dateShift(to,-6);document.getElementById('evaluationFrom').value=from;document.getElementById('evaluationTo').value=to;generateEmployeeEvaluation();}
+function setEvaluationThisMonth(){const d=today(),from=d.slice(0,7)+'-01';document.getElementById('evaluationFrom').value=from;document.getElementById('evaluationTo').value=d;generateEmployeeEvaluation();}
+
+async function loadViolations(from,to,employeeId=''){
+ let q=supabaseClient.from('employee_violations').select('*').gte('violation_date',from).lte('violation_date',to).order('violation_date',{ascending:false}).order('created_at',{ascending:false});
+ if(employeeId)q=q.eq('employee_id',employeeId);
+ const {data,error}=await q;if(error)throw error;return (data||[]).filter(v=>String(v.status||'active').toLowerCase()!=='cancelled');
+}
+async function loadEvaluationPermissions(from,to,employeeId=''){
+ let q=supabaseClient.from('permission_requests').select('*').gte('created_at',from+'T00:00:00').lte('created_at',to+'T23:59:59');
+ if(employeeId)q=q.eq('employee_id',employeeId);
+ const {data,error}=await q;if(error)throw error;return data||[];
+}
+async function renderViolations(from,to,employeeId=''){
+ const body=document.getElementById('violationsBody');if(!body)return[];
+ try{const rows=await loadViolations(from,to,employeeId);if(!rows.length){body.innerHTML='<tr><td colspan="7">لا توجد مخالفات ضمن الفترة</td></tr>';return rows;}body.innerHTML=rows.map(v=>`<tr><td>${esc(v.violation_date||'')}</td><td>${esc((allEmployeesList.find(e=>Number(e.id)===Number(v.employee_id))||employeesList.find(e=>Number(e.id)===Number(v.employee_id))||{}).name||'—')}</td><td>${esc(v.violation_type||'—')}</td><td class="danger">-${Number(v.points||0)}</td><td>${esc(v.note||'')}</td><td>${String(v.source||'manual')==='automatic'?'تلقائية':'يدوية'}</td><td class="management-only">${isManagement()?`<button class="btn-red" onclick="cancelEmployeeViolation(${Number(v.id)})">إلغاء</button>`:''}</td></tr>`).join('');return rows;}catch(e){console.error(e);body.innerHTML='<tr><td colspan="7">تعذر تحميل المخالفات — تأكد من تنفيذ SQL الخاص بالمخالفات</td></tr>';return[];}
+}
+
+async function addEmployeeViolation(){
+ if(!isManagement())return;const employeeId=document.getElementById('violationEmployee').value,employee=(allEmployeesList||[]).find(e=>String(e.id)===String(employeeId));if(!employee)return showToast('اختر الموظف');
+ const type=document.getElementById('violationType').value,points=Math.max(0,Number(document.getElementById('violationPoints').value||evaluationPenalties[type]||0)),date=document.getElementById('violationDate').value||today(),note=document.getElementById('violationNote').value.trim();
+ if(points<=0)return showToast('أدخل نقاط الخصم');
+ const {error}=await supabaseClient.from('employee_violations').insert({employee_id:employee.id,violation_type:type,points,violation_date:date,note,source:'manual',status:'active',created_by:currentUser?.id||null}).select().single();
+ if(error){console.error(error);return showToast('تعذر إضافة المخالفة');}
+ await writeManagementLog('إضافة مخالفة',employee.id,employee.name,JSON.stringify({type,points,date,note}));document.getElementById('violationNote').value='';showToast('تمت إضافة المخالفة');
+ const from=document.getElementById('evaluationFrom').value||date,to=document.getElementById('evaluationTo').value||date,emp=document.getElementById('evaluationEmployee').value;await generateEmployeeEvaluation(from,to,emp);
+}
+
+async function cancelEmployeeViolation(id){
+ if(!isManagement()||!confirm('إلغاء هذه المخالفة؟ سيتم إرجاع نقاطها للتقييم.'))return;
+ const {data:old,error:readError}=await supabaseClient.from('employee_violations').select('employee_id,violation_type,points,violation_date,note').eq('id',id).maybeSingle();if(readError||!old)return showToast('تعذر قراءة المخالفة');
+ const {error}=await supabaseClient.from('employee_violations').update({status:'cancelled',cancelled_by:currentUser?.id||null,cancelled_at:new Date().toISOString(),cancel_reason:'إلغاء من الإدارة'}).eq('id',id);if(error){console.error(error);return showToast('تعذر إلغاء المخالفة');}
+ const employee=(allEmployeesList||[]).find(e=>Number(e.id)===Number(old.employee_id));await writeManagementLog('إلغاء مخالفة',old.employee_id,employee?.name||'',JSON.stringify({id,type:old.violation_type,points:old.points,date:old.violation_date}));showToast('تم إلغاء المخالفة وإرجاع نقاطها للتقييم');await generateEmployeeEvaluation();
+}
+async function deleteEmployeeViolation(id){return cancelEmployeeViolation(id);}
+
+async function syncAutomaticBreakViolations(from,to,employeeId=''){
+ const employees=(isManagement()?allEmployeesList:employeesList)||[],current=await loadReportData(from,to),breaks=current.breaks||[],penalty=Number(evaluationPenalties['تجاوز الاستراحة']||3);
+ for(const b of breaks){const over=Number(b.overage_minutes||0);if(over<=0)continue;if(employeeId&&Number(b.employee_id)!==Number(employeeId))continue;const emp=employees.find(e=>Number(e.id)===Number(b.employee_id));if(!emp)continue;const date=(b.start_time||from).slice(0,10),note=`تجاوز وقت الاستراحة ${over} دقيقة`;const {data:exists,error}=await supabaseClient.from('employee_violations').select('id').eq('employee_id',emp.id).eq('violation_type','تجاوز الاستراحة').eq('violation_date',date).eq('note',note).limit(1);if(error||exists?.length)continue;await supabaseClient.from('employee_violations').insert({employee_id:emp.id,violation_type:'تجاوز الاستراحة',points:penalty,violation_date:date,note,source:'automatic',status:'active',created_by:currentUser?.id||null});}
+}
+function evaluationRating(score){if(score>=95)return'ممتاز';if(score>=90)return'جيد جداً';if(score>=80)return'جيد';if(score>=70)return'مقبول';return'يحتاج تحسين';}
+
+async function generateEmployeeEvaluation(fromArg,toArg,empArg){
+ const from=fromArg||document.getElementById('evaluationFrom').value,to=toArg||document.getElementById('evaluationTo').value,employeeId=empArg!==undefined?empArg:document.getElementById('evaluationEmployee').value;if(!from||!to)return showToast('حدد تاريخ البداية والنهاية');if(from>to)return showToast('تاريخ البداية يجب أن يكون قبل النهاية');
+ try{
+  await loadEvaluationPenaltySettings();await syncAutomaticBreakViolations(from,to,employeeId);const employees=(isManagement()?allEmployeesList:employeesList)||[],selected=employeeId?employees.filter(e=>String(e.id)===String(employeeId)):employees,current=await loadReportData(from,to),violations=await loadViolations(from,to,employeeId),permissions=await loadEvaluationPermissions(from,to,employeeId),days=reportPeriodDays(from,to),area=document.getElementById('employeeEvaluationArea');
+  const cards=selected.map(e=>{const v=violations.filter(x=>Number(x.employee_id)===Number(e.id)),attendance=current.attendance.filter(a=>Number(a.employee_id)===Number(e.id)),breaks=current.breaks.filter(b=>Number(b.employee_id)===Number(e.id)),perms=permissions.filter(p=>Number(p.employee_id)===Number(e.id)),penalty=v.reduce((s,x)=>s+Number(x.points||0),0),compliance=Math.max(0,100-penalty),presentDays=new Set(attendance.filter(a=>a.check_in).map(a=>a.attendance_date)).size,absentDays=new Set(v.filter(x=>x.violation_type==='غياب بدون إذن').map(x=>x.violation_date)).size,breakOverages=v.filter(x=>x.violation_type==='تجاوز الاستراحة').length,unnotifiedExits=v.filter(x=>x.violation_type==='خروج بدون تبليغ').length,unauthorizedAbsences=v.filter(x=>x.violation_type==='غياب بدون إذن').length,lateness=v.filter(x=>x.violation_type==='تأخير').length,missingBreak=v.filter(x=>x.violation_type==='نسيان تسجيل الاستراحة').length,breakCount=breaks.length,overageMinutes=breaks.reduce((s,b)=>s+Number(b.overage_minutes||0),0),approvedPermissions=perms.filter(p=>['approved','موافق','مقبول'].includes(String(p.status||'').trim().toLowerCase())).length;return{e,penalty,compliance,v,perms,presentDays,absentDays,breakOverages,unnotifiedExits,unauthorizedAbsences,lateness,missingBreak,breakCount,overageMinutes,approvedPermissions,days};});
+  area.innerHTML=cards.length?cards.map(x=>`<div class="evaluation-row"><div class="evaluation-name"><span>👤 ${esc(x.e.name)}</span><span class="badge badge-blue">${esc(from)} → ${esc(to)}</span></div><div class="summary-box"><small>الالتزام</small><strong class="${x.compliance>=80?'success':x.compliance>=60?'warning':'danger'}">${x.compliance}%</strong></div><div class="summary-box"><small>⚠️ المخالفات</small><strong>${x.v.length}</strong></div><div class="summary-box"><small>⏱️ تجاوز الاستراحة</small><strong>${x.breakOverages}</strong><small>${x.overageMinutes} د</small></div><div class="summary-box"><small>🚪 خروج بدون تبليغ</small><strong>${x.unnotifiedExits}</strong></div><div class="summary-box"><small>❌ غياب بدون إذن</small><strong>${x.unauthorizedAbsences}</strong></div><div class="summary-box"><small>🕐 التأخير</small><strong>${x.lateness}</strong></div><div class="summary-box"><small>☕ الاستراحات</small><strong>${x.breakCount}</strong></div><div class="summary-box"><small>📋 الأذونات</small><strong>${x.perms.length}</strong><small>موافق: ${x.approvedPermissions}</small></div><div class="summary-box"><small>⭐ التقييم</small><strong class="${x.compliance>=80?'success':x.compliance>=60?'warning':'danger'}">${evaluationRating(x.compliance)}</strong></div><div class="summary-box"><small>📉 الخصم</small><strong class="danger">-${x.penalty}</strong></div></div>`).join(''):'<p class="muted">لا توجد بيانات للموظف المحدد.</p>';
+  await renderViolations(from,to,employeeId);
+ }catch(e){console.error(e);showToast('تعذر استخراج التقييم: '+(e.message||''));}
+}
+
 async function generateWeeklyReport(){
  const from=document.getElementById('reportFrom').value;
  const to=document.getElementById('reportTo').value;
@@ -5169,7 +5466,7 @@ function renderWeeklyReport(from,to,previousFrom,previousTo){
    <div class="summary-box"><small>عدد الموظفين</small><strong>${weeklyReportRows.length}</strong></div>
    <div class="summary-box"><small>أيام الحضور</small><strong>${totalPresent}</strong></div>
    <div class="summary-box"><small>إجمالي وقت العمل الفعلي</small><strong>${minutesToText(totalWork)}</strong></div>
-   <div class="summary-box"><small>إجمالي الاستراحات</small><strong>${minutesToText(totalBreak)}</strong></div>
+   <div class="summary-box"><small>إجمالي الاستراحات الفعلي</small><strong>${minutesToText(totalBreak)}</strong></div>
    <div class="summary-box"><small>عدد مرات البريك</small><strong>${totalBreakCount}</strong></div>
    <div class="summary-box"><small>تجاوز وقت البريك</small><strong class="${totalOverage>0?'danger':'success'}">${totalOverage} دقيقة</strong></div>
    <div class="summary-box"><small>متوسط الالتزام</small><strong class="success">${averageCompliance}%</strong></div>
@@ -5180,7 +5477,7 @@ function renderWeeklyReport(from,to,previousFrom,previousTo){
    <b>${esc(from)}</b>
    إلى
    <b>${esc(to)}</b>
-   — المقارنة:
+   — <b>مقارنة بالأسبوع السابق:</b>
    <b>${esc(previousFrom)}</b>
    إلى
    <b>${esc(previousTo)}</b>
@@ -5512,6 +5809,7 @@ const I18N = {
  'طباعة / PDF':'Print / PDF',
  'إجمالي التواجد':'Total Presence',
  'إجمالي الاستراحات':'Total Break Time',
+ 'إجمالي الاستراحات الفعلي':'Actual Total Break Time',
  'عدد مرات البريك':'Break Count',
  'تجاوز وقت البريك':'Break Overage',
  'التقييم الأسبوعي التلقائي':'Automatic Weekly Rating',
@@ -5853,6 +6151,7 @@ if(document.readyState==='loading'){
 <script>
 document.addEventListener('DOMContentLoaded',()=>{
   updateThemeButton();
+  initEvaluationControls();
 });
 </script>
 
