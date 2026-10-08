@@ -3069,16 +3069,43 @@ async function startBreak(
   }
 
   // الموظف يبدأ التدخين/العشاء عبر RPC؛ لا يوجد INSERT مباشر من المتصفح.
+  // الفحص هنا للواجهة فقط، أما المنع الحقيقي في PostgreSQL داخل start_break.
   if(currentProfile?.role === 'employee'){
    if(breakType!=='smoking' && breakType!=='dinner'){
     showToast('نوع الاستراحة غير متاح للموظف بهذه الطريقة');
     return;
    }
 
+   if(breakType==='smoking'){
+    const cooldown=getSmokingCooldown(employeeId);
+    if(cooldown!==null && cooldown>0){
+     showToast(`تبقى ${cooldown} دقيقة قبل استراحة التدخين التالية`);
+     return;
+    }
+   }
+
+   if(breakType==='dinner'){
+    const dinnerUsed=breaksList.some(
+     b=>Number(b.employee_id)===Number(employeeId) &&
+        b.break_type==='dinner'
+    );
+    if(dinnerUsed){
+     showToast('تم استخدام استراحة العشاء اليوم');
+     return;
+    }
+   }
+
    const {data,error}=await supabaseClient.rpc('start_break',{p_break_type:breakType});
    if(error){
     console.error('EMPLOYEE START BREAK RPC ERROR',error);
-    showToast(error.message||'تعذر بدء الاستراحة');
+    const msg=String(error.message||'');
+    if(/التدخين|smoking|60|ساعة/i.test(msg)){
+     showToast(msg || 'استراحة التدخين غير متاحة حالياً');
+    }else if(/العشاء|dinner|مرة واحدة|اليوم/i.test(msg)){
+     showToast(msg || 'تم استخدام استراحة العشاء اليوم');
+    }else{
+     showToast(msg || 'تعذر بدء الاستراحة');
+    }
     return;
    }
 
