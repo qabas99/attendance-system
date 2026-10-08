@@ -2530,35 +2530,35 @@ function getAttendance(employeeId){
 
 async function loadTodayBreaks(){
 
- const start =
-  today()+'T00:00:00';
-
- const {
-  data,
-  error
- } =
- await supabaseClient
+ const start = today()+'T00:00:00';
+ const {data,error} = await supabaseClient
   .from('breaks')
   .select('*')
-  .gte(
-   'start_time',
-   start
-  )
-  .order(
-   'start_time',
-   {ascending:false}
-  );
+  .gte('start_time',start)
+  .order('start_time',{ascending:false});
 
  if(error){
-
-  console.error(error);
-
+  console.error('LOAD TODAY BREAKS ERROR',error);
   return;
-
  }
 
- breaksList=data||[];
-
+ // لا تستبدل الحالة المحلية بالكامل بنتيجة استعلام بدأت قبل حفظ الاستراحة؛
+ // قد يصل تحديث realtime أثناء الاستعلام ثم تعود النتيجة القديمة وتخفيها من الواجهة.
+ const fetched = Array.isArray(data) ? data : [];
+ const byId = new Map(fetched.map(row=>[String(row.id),row]));
+ const todayStart = new Date(start).getTime();
+ for(const local of breaksList){
+  if(!local?.id || byId.has(String(local.id))) continue;
+  const localStart = new Date(local.start_time).getTime();
+  // احتفظ بالاستراحات النشطة التي ظهرت محلياً للتو إذا لم يتضمنها
+  // الاستعلام المتأخر؛ فهي موجودة بالفعل في قاعدة البيانات.
+  if(!local.end_time && Number.isFinite(localStart) && localStart >= todayStart){
+   byId.set(String(local.id),local);
+  }
+ }
+ breaksList = Array.from(byId.values()).sort((a,b)=>
+  new Date(b.start_time)-new Date(a.start_time)
+ );
 }
 
 
@@ -5037,7 +5037,12 @@ function applyRealtimeBreakChange(payload){
  if(event==='DELETE'){
   breaksList=breaksList.filter(x=>Number(x.id)!==Number(row.id));
  }else{
-  patchBreak(row);
+  const current=breaksList.find(x=>Number(x.id)===Number(row.id));
+  // قد يصل INSERT/Broadcast متأخر بعد UPDATE الذي أنهى الاستراحة؛ لا تسمح
+  // للنسخة القديمة ذات end_time الفارغ بإعادة فتحها في الواجهة.
+  const staleOpenUpdate = current?.end_time && !row.end_time &&
+   new Date(current.end_time).getTime() >= new Date(current.start_time).getTime();
+  if(!staleOpenUpdate) patchBreak(row);
  }
  renderTable();
  updateStats();
