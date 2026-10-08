@@ -1291,7 +1291,7 @@ html[data-theme="dark"] .weekly-color-control label{color:#e5edf8 !important}
 <div class="container">
 
  <!-- لوحة التحكم المخصصة -->
- <section class="dashboard-display management-section employee-hidden non-weekly-section" id="customDashboard">
+ <section class="dashboard-display management-section employee-hidden" id="customDashboard">
   <div class="dashboard-title">
    <h2>لوحة التحكم والملخص اليومي</h2>
    <span class="dashboard-badge">عرض الشاشة</span>
@@ -1597,7 +1597,7 @@ html[data-theme="dark"] .weekly-color-control label{color:#e5edf8 !important}
 
 
  <!-- تقييم الموظفين والمخالفات -->
- <div class="card management-section" id="employeeEvaluationSection">
+ <div class="card" id="employeeEvaluationSection">
   <h2>📊 تقييم الموظفين والمخالفات</h2>
   <div class="evaluation-controls">
    <div class="evaluation-date-field">
@@ -2364,23 +2364,13 @@ async function loadAllData(options={}){
  if(currentUser) jobs.push(loadPermissionRequests());
  await Promise.all(jobs);
  populateEmployeeSelects(); renderTable(); updateStats(); renderPermissionRequests();
- if(isManagement() && document.getElementById('employeeEvaluationSection')){
-  fillEvaluationEmployees();
-  await loadEvaluationPenaltySettings();
- }
+ if(document.getElementById('employeeEvaluationSection')){ fillEvaluationEmployees(); loadEvaluationPenaltySettings(); }
  if(isAdmin() && options.accounts) loadAccountProfiles();
 }
 
 async function loadEmployees(){
  let q=supabaseClient.from('employees').select('*').order('name');
- if(isManagement()){
-  // الإدارة تحتاج قائمة الموظفين كاملة.
- }else if(currentProfile?.role==='employee' && currentProfile?.employee_id){
-  // الموظف يرى بياناته فقط.
-  q=q.eq('id',currentProfile.employee_id);
- }else{
-  q=q.eq('active',true).eq('id',-1);
- }
+ if(!isManagement()) q=q.eq('active',true);
  const {data,error}=await q;
  if(error){ console.error(error); showToast('تعذر تحميل الموظفين'); return; }
  allEmployeesList=data||[];
@@ -2518,9 +2508,7 @@ async function loadTodayAttendance(){
 
  }
 
- attendanceList=(data||[]).filter(a=>
-  isManagement() || Number(a.employee_id)===Number(currentProfile?.employee_id)
- );
+ attendanceList=data||[];
 
 }
 
@@ -2569,9 +2557,7 @@ async function loadTodayBreaks(){
 
  }
 
- breaksList=(data||[]).filter(b=>
-  isManagement() || Number(b.employee_id)===Number(currentProfile?.employee_id)
- );
+ breaksList=data||[];
 
 }
 
@@ -2650,9 +2636,7 @@ async function loadTodayWorkSessions(){
   workSessionsList=[];
   return;
  }
- workSessionsList=(data||[]).filter(s=>
-  isManagement() || Number(s.employee_id)===Number(currentProfile?.employee_id)
- );
+ workSessionsList=data||[];
 }
 
 function getActiveWorkSession(employeeId){
@@ -2679,6 +2663,18 @@ function patchWorkSession(row){
 }
 
 async function openWorkSession(employeeId,attendanceId,startTime){
+ // الموظف يفتح جلسة العمل عبر RPC آمنة؛ الإدارة تستخدم المسار المباشر.
+ if(currentProfile?.role === 'employee' && Number(employeeId) === Number(currentProfile.employee_id)){
+  const {data,error}=await supabaseClient.rpc('employee_check_in');
+  if(error){
+   console.error('EMPLOYEE CHECK-IN RPC ERROR',error);
+   return {error};
+  }
+  const ws=data?.work_session||null;
+  if(ws) patchWorkSession(ws);
+  return {data:ws,attendance:data?.attendance||null};
+ }
+
  const {data,error}=await supabaseClient.from('work_sessions').insert({
   employee_id:employeeId,
   attendance_id:attendanceId||null,
@@ -2693,6 +2689,11 @@ async function openWorkSession(employeeId,attendanceId,startTime){
 }
 
 async function closeWorkSession(employeeId,endTime){
+ if(currentProfile?.role === 'employee' && Number(employeeId) === Number(currentProfile.employee_id)){
+  // لا نغلق جلسة الموظف مباشرة؛ الانصراف/البريك يستخدمان RPC الخاصة بهما.
+  return {data:null,skippedForEmployee:true};
+ }
+
  const active=getActiveWorkSession(employeeId);
  if(!active) return {data:null};
  const end=endTime||new Date().toISOString();
@@ -2707,6 +2708,73 @@ async function closeWorkSession(employeeId,endTime){
  }
  patchWorkSession(data||{...active,end_time:end,duration_minutes:duration});
  return {data:data||{...active,end_time:end,duration_minutes:duration}};
+}
+
+async function employeeCheckInSecure(){
+ const {data,error}=await supabaseClient.rpc('employee_check_in');
+ if(error){
+  console.error('EMPLOYEE CHECK-IN RPC ERROR',error);
+  return {error};
+ }
+ const employeeId=Number(currentProfile?.employee_id);
+ const {data:attendance,error:attendanceError}=await supabaseClient
+  .from('attendance')
+  .select('*')
+  .eq('employee_id',employeeId)
+  .eq('attendance_date',today())
+  .maybeSingle();
+ if(attendanceError){
+  console.error('EMPLOYEE CHECK-IN READ ATTENDANCE ERROR',attendanceError);
+  return {error:attendanceError};
+ }
+ if(attendance) patchAttendance(attendance);
+ const {data:ws,error:wsError}=await supabaseClient
+  .from('work_sessions')
+  .select('*')
+  .eq('employee_id',employeeId)
+  .is('end_time',null)
+  .order('id',{ascending:false})
+  .limit(1)
+  .maybeSingle();
+ if(wsError){
+  console.error('EMPLOYEE CHECK-IN READ SESSION ERROR',wsError);
+  return {error:wsError};
+ }
+ if(ws) patchWorkSession(ws);
+ return {data:{...data,attendance,work_session:ws}};
+}
+
+async function employeeCheckOutSecure(){
+ const {data,error}=await supabaseClient.rpc('employee_check_out');
+ if(error){
+  console.error('EMPLOYEE CHECK-OUT RPC ERROR',error);
+  return {error};
+ }
+ const employeeId=Number(currentProfile?.employee_id);
+ const {data:attendance,error:attendanceError}=await supabaseClient
+  .from('attendance')
+  .select('*')
+  .eq('employee_id',employeeId)
+  .eq('attendance_date',today())
+  .maybeSingle();
+ if(attendanceError){
+  console.error('EMPLOYEE CHECK-OUT READ ATTENDANCE ERROR',attendanceError);
+  return {error:attendanceError};
+ }
+ if(attendance) patchAttendance(attendance);
+ const {data:sessions,error:sessionsError}=await supabaseClient
+  .from('work_sessions')
+  .select('*')
+  .eq('employee_id',employeeId)
+  .order('id',{ascending:false})
+  .limit(1);
+ if(sessionsError){
+  console.error('EMPLOYEE CHECK-OUT READ SESSION ERROR',sessionsError);
+  return {error:sessionsError};
+ }
+ const ws=sessions?.[0]||null;
+ if(ws) patchWorkSession(ws);
+ return {data:{...data,attendance,work_session:ws}};
 }
 
 /* =========================================================
@@ -2724,6 +2792,18 @@ async function checkIn(employeeId){
   if(currentProfile?.role === 'employee' && Number(employeeId) !== Number(currentProfile.employee_id)){
    showToast('لا يمكنك تنفيذ إجراء على موظف آخر'); return;
   }
+
+  if(currentProfile?.role === 'employee'){
+   const employee=employeesList.find(e=>Number(e.id)===Number(employeeId));
+   if(!employee) return;
+   const {data,error}=await employeeCheckInSecure();
+   if(error){ showToast(error.message||'تعذر تسجيل الحضور'); return; }
+   renderTable(); updateStats();
+   writeActivity(employeeId,employee.name,'تسجيل حضور',null,'بدأ وقت العمل الفعلي').catch(()=>{});
+   showToast('تم تسجيل الحضور وبدأ وقت العمل الفعلي');
+   return;
+  }
+
   const employee=employeesList.find(e=>Number(e.id)===Number(employeeId));
   if(!employee) return;
   const existing=getAttendance(employeeId);
@@ -2796,6 +2876,21 @@ async function checkOut(employeeId){
   if(currentProfile?.role === 'employee' && Number(employeeId) !== Number(currentProfile.employee_id)){
    showToast('لا يمكنك تنفيذ إجراء على موظف آخر'); return;
   }
+
+  if(currentProfile?.role === 'employee'){
+   const employee=employeesList.find(e=>Number(e.id)===Number(employeeId));
+   if(!employee) return;
+   const active=getActiveBreak(employeeId);
+   if(active){ showToast('يجب إنهاء الاستراحة أولاً'); return; }
+   const {data,error}=await employeeCheckOutSecure();
+   if(error){ showToast(error.message||'تعذر تسجيل الخروج'); return; }
+   renderTable(); updateStats();
+   const duration=getTodayActualWorkMinutes(employeeId);
+   writeActivity(employeeId,employee.name,'تسجيل خروج',duration+' دقيقة','تم إيقاف وقت العمل الفعلي وإغلاق اليوم').catch(()=>{});
+   showToast('تم تسجيل الخروج وإيقاف وقت العمل الفعلي');
+   return;
+  }
+
   const employee=employeesList.find(e=>Number(e.id)===Number(employeeId));
   const attendance=getAttendance(employeeId);
   if(!employee || !attendance) return;
@@ -2970,6 +3065,44 @@ async function startBreak(
     'تم إرسال طلب استراحة الطوارئ بانتظار موافقة المسؤول'
    );
 
+   return;
+  }
+
+  // الموظف يبدأ التدخين/العشاء عبر RPC؛ لا يوجد INSERT مباشر من المتصفح.
+  if(currentProfile?.role === 'employee'){
+   if(breakType!=='smoking' && breakType!=='dinner'){
+    showToast('نوع الاستراحة غير متاح للموظف بهذه الطريقة');
+    return;
+   }
+
+   const {data,error}=await supabaseClient.rpc('start_break',{p_break_type:breakType});
+   if(error){
+    console.error('EMPLOYEE START BREAK RPC ERROR',error);
+    showToast(error.message||'تعذر بدء الاستراحة');
+    return;
+   }
+
+   const row=data?.break||null;
+   if(data?.work_session) patchWorkSession(data.work_session);
+   if(row) patchBreak(row);
+   renderTable(); updateStats();
+
+   if(realtimeChannel && row){
+    realtimeChannel.send({
+     type:'broadcast',
+     event:'break_fast_update',
+     payload:{eventType:'INSERT',new:row}
+    }).catch(e=>console.warn('Fast break broadcast error:',e));
+   }
+
+   writeActivity(
+    employeeId,
+    employee.name,
+    'بدء استراحة',
+    (row?.allowed_minutes||0)+' دقيقة',
+    BREAK_RULES[breakType].name
+   );
+   showToast('تم بدء الاستراحة');
    return;
   }
 
@@ -3185,6 +3318,35 @@ async function finishBreak(breakId){
 
  if(currentProfile?.role === 'employee' && Number(active.employee_id) !== Number(currentProfile.employee_id)){
   showToast('لا يمكنك إنهاء استراحة موظف آخر');
+  return;
+ }
+
+ if(currentProfile?.role === 'employee'){
+  const employee=employeesList.find(e=>Number(e.id)===Number(active.employee_id));
+  const {data,error}=await supabaseClient.rpc('end_break',{p_break_id:Number(breakId)});
+  if(error){
+   console.error('EMPLOYEE FINISH BREAK RPC ERROR',error);
+   showToast(error.message||'تعذر إنهاء الاستراحة');
+   return;
+  }
+  const row=data?.break||null;
+  if(row) patchBreak(row);
+  renderTable(); updateStats();
+  if(realtimeChannel && row){
+   realtimeChannel.send({
+    type:'broadcast',
+    event:'break_fast_update',
+    payload:{eventType:'UPDATE',new:row}
+   }).catch(e=>console.warn('Fast break return broadcast error:',e));
+  }
+  writeActivity(
+   active.employee_id,
+   employee?.name||'',
+   'إنهاء استراحة',
+   (row?.actual_minutes??0)+' دقيقة',
+   (row?.overage_minutes||0)>0 ? 'تم إنهاء الاستراحة مع تجاوز' : 'تم إنهاء الاستراحة'
+  );
+  showToast('تم إنهاء الاستراحة');
   return;
  }
 
@@ -4380,8 +4542,8 @@ async function cleanupOldActivityLogs(){
 
 async function loadActivityLogs(){
 
- // سجل النشاط إداري فقط؛ الموظف لا يقوم بتحميله أو تنظيفه.
- if(!isManagement()) return;
+ // حذف السجلات الأقدم من 30 يوم قبل عرض السجل.
+ await cleanupOldActivityLogs();
 
  const {
   data,
@@ -4459,6 +4621,11 @@ async function loadActivityLogs(){
 setTimeout(()=>{
  restoreActivityLogVisibility();
 },300);
+
+/* تنظيف سجل النشاط تلقائياً عند تشغيل النظام */
+setTimeout(()=>{
+ cleanupOldActivityLogs();
+},1000);
 
 /* =========================================================
    MANAGEMENT LOGS
@@ -5054,11 +5221,9 @@ function subscribeRealtime(){
       table:'activity_logs'
      },
      ()=>{
-      if(isManagement()){
-       scheduleRealtimeRefresh(async()=>{
-        await loadActivityLogs();
-       });
-      }
+      scheduleRealtimeRefresh(async()=>{
+       await loadActivityLogs();
+      });
      }
     )
 
@@ -5263,7 +5428,6 @@ function focusEvaluationCustomRange(){
 }
 
 async function loadEvaluationPenaltySettings(){
- if(!isManagement()) return;
  try{
   const {data,error}=await supabaseClient.from('evaluation_penalty_settings').select('violation_type,points');
   if(error) throw error;
@@ -5300,22 +5464,19 @@ function initEvaluationControls(){
 }
 
 function fillEvaluationEmployees(){
- if(!isManagement()) return;
- const employees=allEmployeesList||[];
+ const employees=(isManagement()?allEmployeesList:employeesList)||[];
  ['evaluationEmployee','violationEmployee'].forEach(id=>{const el=document.getElementById(id);if(!el)return;const old=el.value;el.innerHTML=id==='evaluationEmployee'?'<option value="">كل الموظفين</option>':'';employees.forEach(e=>{const o=document.createElement('option');o.value=e.id;o.textContent=e.name;el.appendChild(o);});if([...el.options].some(o=>o.value===old))el.value=old;});
 }
-function setEvaluationToday(){if(!isManagement()) return;const d=today();document.getElementById('evaluationFrom').value=d;document.getElementById('evaluationTo').value=d;generateEmployeeEvaluation();}
-function setEvaluationLast7Days(){if(!isManagement()) return;const to=today(),from=dateShift(to,-6);document.getElementById('evaluationFrom').value=from;document.getElementById('evaluationTo').value=to;generateEmployeeEvaluation();}
-function setEvaluationThisMonth(){if(!isManagement()) return;const d=today(),from=d.slice(0,7)+'-01';document.getElementById('evaluationFrom').value=from;document.getElementById('evaluationTo').value=d;generateEmployeeEvaluation();}
+function setEvaluationToday(){const d=today();document.getElementById('evaluationFrom').value=d;document.getElementById('evaluationTo').value=d;generateEmployeeEvaluation();}
+function setEvaluationLast7Days(){const to=today(),from=dateShift(to,-6);document.getElementById('evaluationFrom').value=from;document.getElementById('evaluationTo').value=to;generateEmployeeEvaluation();}
+function setEvaluationThisMonth(){const d=today(),from=d.slice(0,7)+'-01';document.getElementById('evaluationFrom').value=from;document.getElementById('evaluationTo').value=d;generateEmployeeEvaluation();}
 
 async function loadViolations(from,to,employeeId=''){
- if(!isManagement()) return [];
  let q=supabaseClient.from('employee_violations').select('*').gte('violation_date',from).lte('violation_date',to).order('violation_date',{ascending:false}).order('created_at',{ascending:false});
  if(employeeId)q=q.eq('employee_id',employeeId);
  const {data,error}=await q;if(error)throw error;return (data||[]).filter(v=>String(v.status||'active').toLowerCase()!=='cancelled');
 }
 async function loadEvaluationPermissions(from,to,employeeId=''){
- if(!isManagement()) return [];
  let q=supabaseClient.from('permission_requests').select('*').gte('created_at',from+'T00:00:00').lte('created_at',to+'T23:59:59');
  if(employeeId)q=q.eq('employee_id',employeeId);
  const {data,error}=await q;if(error)throw error;return data||[];
@@ -5344,14 +5505,12 @@ async function cancelEmployeeViolation(id){
 async function deleteEmployeeViolation(id){return cancelEmployeeViolation(id);}
 
 async function syncAutomaticBreakViolations(from,to,employeeId=''){
- if(!isManagement()) return;
- const employees=allEmployeesList||[],current=await loadReportData(from,to),breaks=current.breaks||[],penalty=Number(evaluationPenalties['تجاوز الاستراحة']||3);
+ const employees=(isManagement()?allEmployeesList:employeesList)||[],current=await loadReportData(from,to),breaks=current.breaks||[],penalty=Number(evaluationPenalties['تجاوز الاستراحة']||3);
  for(const b of breaks){const over=Number(b.overage_minutes||0);if(over<=0)continue;if(employeeId&&Number(b.employee_id)!==Number(employeeId))continue;const emp=employees.find(e=>Number(e.id)===Number(b.employee_id));if(!emp)continue;const date=(b.start_time||from).slice(0,10),note=`تجاوز وقت الاستراحة ${over} دقيقة`;const {data:exists,error}=await supabaseClient.from('employee_violations').select('id').eq('employee_id',emp.id).eq('violation_type','تجاوز الاستراحة').eq('violation_date',date).eq('note',note).limit(1);if(error||exists?.length)continue;await supabaseClient.from('employee_violations').insert({employee_id:emp.id,violation_type:'تجاوز الاستراحة',points:penalty,violation_date:date,note,source:'automatic',status:'active',created_by:currentUser?.id||null});}
 }
 function evaluationRating(score){if(score>=95)return'ممتاز';if(score>=90)return'جيد جداً';if(score>=80)return'جيد';if(score>=70)return'مقبول';return'يحتاج تحسين';}
 
 async function generateEmployeeEvaluation(fromArg,toArg,empArg){
- if(!isManagement()) return showToast('التقييم متاح للإدارة فقط');
  const from=fromArg||document.getElementById('evaluationFrom').value,to=toArg||document.getElementById('evaluationTo').value,employeeId=empArg!==undefined?empArg:document.getElementById('evaluationEmployee').value;if(!from||!to)return showToast('حدد تاريخ البداية والنهاية');if(from>to)return showToast('تاريخ البداية يجب أن يكون قبل النهاية');
  try{
   await loadEvaluationPenaltySettings();await syncAutomaticBreakViolations(from,to,employeeId);const employees=(isManagement()?allEmployeesList:employeesList)||[],selected=employeeId?employees.filter(e=>String(e.id)===String(employeeId)):employees,current=await loadReportData(from,to),violations=await loadViolations(from,to,employeeId),permissions=await loadEvaluationPermissions(from,to,employeeId),days=reportPeriodDays(from,to),area=document.getElementById('employeeEvaluationArea');
@@ -5362,7 +5521,6 @@ async function generateEmployeeEvaluation(fromArg,toArg,empArg){
 }
 
 async function generateWeeklyReport(){
- if(!isManagement()) return;
  const from=document.getElementById('reportFrom').value;
  const to=document.getElementById('reportTo').value;
  const employeeFilter=document.getElementById('reportEmployee').value;
