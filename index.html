@@ -2984,31 +2984,6 @@ async function startBreak(
    return;
   }
 
-  // المنع يخص التدخين والعشاء فقط. الطارئة والمصرح بها مستثنات.
-  if(breakType==='smoking' || breakType==='dinner'){
-   const activeRestrictedBreak = await getActiveSmokingOrDinnerBreak();
-   if(activeRestrictedBreak.error){
-    showToast('تعذر التحقق من استراحة التدخين أو العشاء الحالية');
-    return;
-   }
-   if(
-    activeRestrictedBreak.data &&
-    Number(activeRestrictedBreak.data.employee_id)!==Number(employeeId)
-   ){
-    const otherEmployee = employeesList.find(
-     e=>Number(e.id)===Number(activeRestrictedBreak.data.employee_id)
-    );
-    const breakName =
-     activeRestrictedBreak.data.break_type==='smoking'
-      ? 'تدخين'
-      : 'عشاء';
-    showToast(
-     `لا يمكن بدء ${breakType==='smoking'?'استراحة التدخين':'استراحة العشاء'} الآن: ${otherEmployee?.name || 'موظف آخر'} في استراحة ${breakName}. انتظر عودته.`
-    );
-    return;
-   }
-  }
-
   if(breakType === 'emergency'){
 
    const pendingEmergency =
@@ -3070,6 +3045,16 @@ async function startBreak(
 
   // الموظف يبدأ التدخين/العشاء عبر RPC؛ لا يوجد INSERT مباشر من المتصفح.
   // الفحص هنا للواجهة فقط، أما المنع الحقيقي في PostgreSQL داخل start_break.
+  // قفل عالمي للتدخين والعشاء: إذا أي موظف عنده نفس نوع الاستراحة مفتوحة،
+  // لا يمكن لموظف آخر البدء بها حتى تنتهي. هذا فحص واجهة فقط، والمنع الحقيقي في DB.
+  if((breakType==='smoking' || breakType==='dinner') &&
+     breaksList.some(b => b.break_type===breakType && !b.end_time)){
+   showToast(breakType==='smoking'
+    ? 'استراحة التدخين مستخدمة حالياً من موظف آخر. انتظر حتى تنتهي.'
+    : 'استراحة العشاء مستخدمة حالياً من موظف آخر. انتظر حتى تنتهي.');
+   return;
+  }
+
   if(currentProfile?.role === 'employee'){
    if(breakType!=='smoking' && breakType!=='dinner'){
     showToast('نوع الاستراحة غير متاح للموظف بهذه الطريقة');
@@ -3139,6 +3124,16 @@ async function startBreak(
      Number(b.employee_id) ===
      Number(employeeId)
    );
+
+  // الإدارة تستخدم INSERT مباشر، لذلك نعيد نفس القفل هنا لتحسين تجربة المستخدم.
+  // القاعدة نفسها محمية أيضاً بـ trigger في PostgreSQL لمنع أي تجاوز أو سباق متزامن.
+  if((breakType==='smoking' || breakType==='dinner') &&
+     breaksList.some(b => b.break_type===breakType && !b.end_time)){
+   showToast(breakType==='smoking'
+    ? 'استراحة التدخين مستخدمة حالياً من موظف آخر. انتظر حتى تنتهي.'
+    : 'استراحة العشاء مستخدمة حالياً من موظف آخر. انتظر حتى تنتهي.');
+   return;
+  }
 
   if(
    breakType !== 'authorized' &&
@@ -3253,45 +3248,6 @@ async function startBreak(
    );
 
    return;
-  }
-
-  // طبقة تحقق ثانية بعد الحفظ لمنع سباق الضغطات المتزامنة على التدخين/العشاء.
-  // القيد النهائي يجب أن يكون أيضاً على مستوى PostgreSQL كما سيُذكر مع النسخة النهائية.
-  if(breakType==='smoking' || breakType==='dinner') {
-   const {data:activeRestrictedRows,error:verifyError}=await supabaseClient
-    .from('breaks')
-    .select('id,employee_id,break_type,start_time,end_time')
-    .is('end_time',null)
-    .in('break_type',['smoking','dinner'])
-    .order('start_time',{ascending:true})
-    .order('id',{ascending:true});
-
-   if(verifyError){
-    console.error('RESTRICTED BREAK VERIFY ERROR',verifyError);
-    // لا نسمح ببقاء الاستراحة إذا تعذر التحقق من قاعدة منع الاستراحات المتزامنة.
-    await supabaseClient.from('breaks').delete().eq('id',data.id);
-    breaksList=breaksList.filter(b=>Number(b.id)!==Number(data.id));
-    const attendance=getAttendance(employeeId);
-    if(attendance?.present) await openWorkSession(employeeId,attendance.id,new Date().toISOString()).catch(()=>{});
-    showToast('تعذر التحقق من استراحة التدخين/العشاء، ولم تبدأ الاستراحة');
-    return;
-   }
-
-   const winner=activeRestrictedRows?.[0];
-   if(winner && Number(winner.id)!==Number(data.id)){
-    const {error:rollbackError}=await supabaseClient.from('breaks').delete().eq('id',data.id);
-    if(rollbackError){
-     console.error('RESTRICTED BREAK ROLLBACK ERROR',rollbackError);
-     showToast('يوجد موظف آخر في استراحة التدخين/العشاء حالياً');
-    }else{
-     breaksList=breaksList.filter(b=>Number(b.id)!==Number(data.id));
-     const attendance=getAttendance(employeeId);
-     if(attendance?.present) await openWorkSession(employeeId,attendance.id,new Date().toISOString()).catch(()=>{});
-     const otherEmployee=employeesList.find(e=>Number(e.id)===Number(winner.employee_id));
-     showToast(`لا يمكن بدء الاستراحة الآن: ${otherEmployee?.name||'موظف آخر'} لديه استراحة ${winner.break_type==='smoking'?'تدخين':'عشاء'}`);
-    }
-    return;
-   }
   }
 
   patchBreak(data);
@@ -4135,14 +4091,24 @@ async function deleteEmployeeDirect(employeeId){
  }
 }
 
+function baghdadDayBounds(){
+ const parts=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Baghdad',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());
+ const map=Object.fromEntries(parts.map(p=>[p.type,p.value]));
+ const day=`${map.year}-${map.month}-${map.day}`;
+ const start=new Date(`${day}T00:00:00+03:00`);
+ const end=new Date(start.getTime()+86400000);
+ return {day,start:start.toISOString(),end:end.toISOString()};
+}
+
 async function resetEmployeeBreaks(employeeId){
  if(!isManagement()) return showToast('ليس لديك صلاحية تصفير الاستراحات');
  const employee=allEmployeesList.find(e=>Number(e.id)===Number(employeeId));
  if(!employee) return;
  if(!confirm(`تصفير جميع استراحات الموظف ${employee.name} لليوم؟`)) return;
- const {error}=await supabaseClient.from('breaks').delete().eq('employee_id',employeeId).gte('start_time',today()+'T00:00:00');
+ const {start,end,day}=baghdadDayBounds();
+ const {error}=await supabaseClient.from('breaks').delete().eq('employee_id',employeeId).gte('start_time',start).lt('start_time',end);
  if(error){ console.error(error); return showToast('تعذر تصفير الاستراحات: '+error.message); }
- breaksList=breaksList.filter(b=>!(Number(b.employee_id)===Number(employeeId) && String(b.start_time||'').startsWith(today())));
+ breaksList=breaksList.filter(b=>!(Number(b.employee_id)===Number(employeeId) && String(b.start_time||'').slice(0,10)===day));
  renderTable(); updateStats();
  writeManagementLog('تصفير الاستراحات',employeeId,employee.name,'تم تصفير جميع استراحات اليوم').catch(()=>{});
  showToast(`تم تصفير استراحات ${employee.name}`);
@@ -4151,9 +4117,10 @@ async function resetEmployeeBreaks(employeeId){
 async function resetAllEmployeeBreaks(){
  if(!isManagement()) return showToast('ليس لديك صلاحية تصفير الاستراحات');
  if(!confirm('تصفير جميع استراحات جميع الموظفين لليوم؟')) return;
- const {error}=await supabaseClient.from('breaks').delete().gte('start_time',today()+'T00:00:00');
+ const {start,end,day}=baghdadDayBounds();
+ const {error}=await supabaseClient.from('breaks').delete().gte('start_time',start).lt('start_time',end);
  if(error){ console.error(error); return showToast('تعذر تصفير الاستراحات: '+error.message); }
- breaksList=breaksList.filter(b=>!String(b.start_time||'').startsWith(today()));
+ breaksList=breaksList.filter(b=>String(b.start_time||'').slice(0,10)!==day);
  renderTable(); updateStats();
  writeManagementLog(null,null,'تصفير الاستراحات','تم تصفير جميع استراحات جميع الموظفين لليوم').catch(()=>{});
  showToast('تم تصفير استراحات الجميع');
@@ -4162,14 +4129,14 @@ async function resetAllEmployeeBreaks(){
 async function resetAllEmployeeWorkTimes(){
  if(!isManagement()) return showToast('ليس لديك صلاحية تصفير أوقات العمل');
  if(!confirm('⚠️ سيتم تصفير أوقات العمل الفعلية والاستراحات والحضور التجريبي لليوم لجميع الموظفين.\n\nلن يتم حذف الموظفين أو الحسابات أو إعدادات التقييم.\n\nهل تريد المتابعة؟')) return;
- const d=today();
  try{
   const {error}=await supabaseClient.rpc('reset_work_times_today',{p_performed_by:currentUser.id});
   if(error) throw error;
   attendanceList=[];
   workSessionsList=[];
   breaksList=[];
-  permissionRequests=permissionRequests.filter(r=>String(r.created_at||'').slice(0,10)!==d);
+  await loadPermissionRequests();
+  renderPermissionRequests();
   renderTable(); updateStats();
   showToast('تم تصفير أوقات العمل والاستراحات بنجاح');
  }catch(error){
@@ -4523,6 +4490,8 @@ function restoreActivityLogVisibility(){
 
 async function cleanupOldActivityLogs(){
 
+ if(!isManagement()) return true;
+
  try{
 
   const cutoff = new Date(
@@ -4737,21 +4706,7 @@ async function deleteTodayManagementLogs(){
  if(!confirm('هل تريد حذف جميع سجلات الإدارة الخاصة باليوم الحالي؟'))
   return;
 
- const now = new Date();
-
- const start = new Date(
-  now.getFullYear(),
-  now.getMonth(),
-  now.getDate(),
-  0,0,0,0
- );
-
- const end = new Date(
-  now.getFullYear(),
-  now.getMonth(),
-  now.getDate()+1,
-  0,0,0,0
- );
+ const {start,end}=baghdadDayBounds();
 
  const {
   error
@@ -4919,21 +4874,7 @@ async function deleteTodayPermissionRequests(){
  if(!confirm('هل تريد حذف جميع طلبات الأذونات الخاصة باليوم الحالي؟'))
   return;
 
- const now = new Date();
-
- const start = new Date(
-  now.getFullYear(),
-  now.getMonth(),
-  now.getDate(),
-  0,0,0,0
- );
-
- const end = new Date(
-  now.getFullYear(),
-  now.getMonth(),
-  now.getDate()+1,
-  0,0,0,0
- );
+ const {start,end}=baghdadDayBounds();
 
  const {
   error
