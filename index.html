@@ -1965,6 +1965,11 @@ function today(){
  return `${get('year')}-${get('month')}-${get('day')}`;
 }
 
+// بداية اليوم بتوقيت بغداد محوّلة إلى UTC حتى تُستخدم بأمان مع timestamptz في Supabase.
+function todayStartUtc(){
+ return new Date(`${today()}T00:00:00+03:00`).toISOString();
+}
+
 
 function esc(value){
 
@@ -2530,7 +2535,7 @@ function getAttendance(employeeId){
 
 async function loadTodayBreaks(){
 
- const start = today()+'T00:00:00';
+ const start = todayStartUtc();
  const {data,error} = await supabaseClient
   .from('breaks')
   .select('*')
@@ -2625,7 +2630,7 @@ async function getGlobalActiveBreak(excludeEmployeeId=null){
 ========================================================= */
 
 async function loadTodayWorkSessions(){
- const start=today()+'T00:00:00';
+ const start=todayStartUtc();
  const {data,error}=await supabaseClient
   .from('work_sessions')
   .select('*')
