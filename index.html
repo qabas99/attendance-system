@@ -3094,7 +3094,9 @@ async function startBreak(
     return;
    }
 
-   const row=data?.break||null;
+   // start_break returns a breaks row directly (not { break: row }).
+   // Accept both response shapes so the UI updates immediately after RPC success.
+   const row=data?.break || (Array.isArray(data) ? data[0] : null) || (data?.id != null ? data : null);
    if(data?.work_session) patchWorkSession(data.work_session);
    if(row) patchBreak(row);
    renderTable(); updateStats();
@@ -3312,8 +3314,26 @@ async function finishBreak(breakId){
    showToast(error.message||'تعذر إنهاء الاستراحة');
    return;
   }
-  const row=data?.break||null;
-  if(row) patchBreak(row);
+  // end_break returns JSON {success, break_id, actual_minutes, overage_minutes},
+  // not {break: row}. Reload the authoritative row, with a local fallback.
+  let row=null;
+  const {data:closedRow,error:closedRowError}=await supabaseClient
+   .from('breaks')
+   .select('*')
+   .eq('id',Number(breakId))
+   .single();
+  if(!closedRowError && closedRow){
+   row=closedRow;
+  }else{
+   const endedAt=new Date().toISOString();
+   row={
+    ...active,
+    end_time:endedAt,
+    actual_minutes:data?.actual_minutes ?? active.actual_minutes ?? 0,
+    overage_minutes:data?.overage_minutes ?? active.overage_minutes ?? 0
+   };
+  }
+  patchBreak(row);
   renderTable(); updateStats();
   if(realtimeChannel && row){
    realtimeChannel.send({
