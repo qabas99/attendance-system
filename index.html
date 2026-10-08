@@ -1291,7 +1291,7 @@ html[data-theme="dark"] .weekly-color-control label{color:#e5edf8 !important}
 <div class="container">
 
  <!-- لوحة التحكم المخصصة -->
- <section class="dashboard-display management-section employee-hidden" id="customDashboard">
+ <section class="dashboard-display management-section employee-hidden non-weekly-section" id="customDashboard">
   <div class="dashboard-title">
    <h2>لوحة التحكم والملخص اليومي</h2>
    <span class="dashboard-badge">عرض الشاشة</span>
@@ -1597,7 +1597,7 @@ html[data-theme="dark"] .weekly-color-control label{color:#e5edf8 !important}
 
 
  <!-- تقييم الموظفين والمخالفات -->
- <div class="card" id="employeeEvaluationSection">
+ <div class="card management-section" id="employeeEvaluationSection">
   <h2>📊 تقييم الموظفين والمخالفات</h2>
   <div class="evaluation-controls">
    <div class="evaluation-date-field">
@@ -2364,13 +2364,23 @@ async function loadAllData(options={}){
  if(currentUser) jobs.push(loadPermissionRequests());
  await Promise.all(jobs);
  populateEmployeeSelects(); renderTable(); updateStats(); renderPermissionRequests();
- if(document.getElementById('employeeEvaluationSection')){ fillEvaluationEmployees(); loadEvaluationPenaltySettings(); }
+ if(isManagement() && document.getElementById('employeeEvaluationSection')){
+  fillEvaluationEmployees();
+  await loadEvaluationPenaltySettings();
+ }
  if(isAdmin() && options.accounts) loadAccountProfiles();
 }
 
 async function loadEmployees(){
  let q=supabaseClient.from('employees').select('*').order('name');
- if(!isManagement()) q=q.eq('active',true);
+ if(isManagement()){
+  // الإدارة تحتاج قائمة الموظفين كاملة.
+ }else if(currentProfile?.role==='employee' && currentProfile?.employee_id){
+  // الموظف يرى بياناته فقط.
+  q=q.eq('id',currentProfile.employee_id);
+ }else{
+  q=q.eq('active',true).eq('id',-1);
+ }
  const {data,error}=await q;
  if(error){ console.error(error); showToast('تعذر تحميل الموظفين'); return; }
  allEmployeesList=data||[];
@@ -2508,7 +2518,9 @@ async function loadTodayAttendance(){
 
  }
 
- attendanceList=data||[];
+ attendanceList=(data||[]).filter(a=>
+  isManagement() || Number(a.employee_id)===Number(currentProfile?.employee_id)
+ );
 
 }
 
@@ -2557,7 +2569,9 @@ async function loadTodayBreaks(){
 
  }
 
- breaksList=data||[];
+ breaksList=(data||[]).filter(b=>
+  isManagement() || Number(b.employee_id)===Number(currentProfile?.employee_id)
+ );
 
 }
 
@@ -2636,7 +2650,9 @@ async function loadTodayWorkSessions(){
   workSessionsList=[];
   return;
  }
- workSessionsList=data||[];
+ workSessionsList=(data||[]).filter(s=>
+  isManagement() || Number(s.employee_id)===Number(currentProfile?.employee_id)
+ );
 }
 
 function getActiveWorkSession(employeeId){
@@ -4364,8 +4380,8 @@ async function cleanupOldActivityLogs(){
 
 async function loadActivityLogs(){
 
- // حذف السجلات الأقدم من 30 يوم قبل عرض السجل.
- await cleanupOldActivityLogs();
+ // سجل النشاط إداري فقط؛ الموظف لا يقوم بتحميله أو تنظيفه.
+ if(!isManagement()) return;
 
  const {
   data,
@@ -4443,11 +4459,6 @@ async function loadActivityLogs(){
 setTimeout(()=>{
  restoreActivityLogVisibility();
 },300);
-
-/* تنظيف سجل النشاط تلقائياً عند تشغيل النظام */
-setTimeout(()=>{
- cleanupOldActivityLogs();
-},1000);
 
 /* =========================================================
    MANAGEMENT LOGS
@@ -5043,9 +5054,11 @@ function subscribeRealtime(){
       table:'activity_logs'
      },
      ()=>{
-      scheduleRealtimeRefresh(async()=>{
-       await loadActivityLogs();
-      });
+      if(isManagement()){
+       scheduleRealtimeRefresh(async()=>{
+        await loadActivityLogs();
+       });
+      }
      }
     )
 
@@ -5250,6 +5263,7 @@ function focusEvaluationCustomRange(){
 }
 
 async function loadEvaluationPenaltySettings(){
+ if(!isManagement()) return;
  try{
   const {data,error}=await supabaseClient.from('evaluation_penalty_settings').select('violation_type,points');
   if(error) throw error;
@@ -5286,19 +5300,22 @@ function initEvaluationControls(){
 }
 
 function fillEvaluationEmployees(){
- const employees=(isManagement()?allEmployeesList:employeesList)||[];
+ if(!isManagement()) return;
+ const employees=allEmployeesList||[];
  ['evaluationEmployee','violationEmployee'].forEach(id=>{const el=document.getElementById(id);if(!el)return;const old=el.value;el.innerHTML=id==='evaluationEmployee'?'<option value="">كل الموظفين</option>':'';employees.forEach(e=>{const o=document.createElement('option');o.value=e.id;o.textContent=e.name;el.appendChild(o);});if([...el.options].some(o=>o.value===old))el.value=old;});
 }
-function setEvaluationToday(){const d=today();document.getElementById('evaluationFrom').value=d;document.getElementById('evaluationTo').value=d;generateEmployeeEvaluation();}
-function setEvaluationLast7Days(){const to=today(),from=dateShift(to,-6);document.getElementById('evaluationFrom').value=from;document.getElementById('evaluationTo').value=to;generateEmployeeEvaluation();}
-function setEvaluationThisMonth(){const d=today(),from=d.slice(0,7)+'-01';document.getElementById('evaluationFrom').value=from;document.getElementById('evaluationTo').value=d;generateEmployeeEvaluation();}
+function setEvaluationToday(){if(!isManagement()) return;const d=today();document.getElementById('evaluationFrom').value=d;document.getElementById('evaluationTo').value=d;generateEmployeeEvaluation();}
+function setEvaluationLast7Days(){if(!isManagement()) return;const to=today(),from=dateShift(to,-6);document.getElementById('evaluationFrom').value=from;document.getElementById('evaluationTo').value=to;generateEmployeeEvaluation();}
+function setEvaluationThisMonth(){if(!isManagement()) return;const d=today(),from=d.slice(0,7)+'-01';document.getElementById('evaluationFrom').value=from;document.getElementById('evaluationTo').value=d;generateEmployeeEvaluation();}
 
 async function loadViolations(from,to,employeeId=''){
+ if(!isManagement()) return [];
  let q=supabaseClient.from('employee_violations').select('*').gte('violation_date',from).lte('violation_date',to).order('violation_date',{ascending:false}).order('created_at',{ascending:false});
  if(employeeId)q=q.eq('employee_id',employeeId);
  const {data,error}=await q;if(error)throw error;return (data||[]).filter(v=>String(v.status||'active').toLowerCase()!=='cancelled');
 }
 async function loadEvaluationPermissions(from,to,employeeId=''){
+ if(!isManagement()) return [];
  let q=supabaseClient.from('permission_requests').select('*').gte('created_at',from+'T00:00:00').lte('created_at',to+'T23:59:59');
  if(employeeId)q=q.eq('employee_id',employeeId);
  const {data,error}=await q;if(error)throw error;return data||[];
@@ -5327,12 +5344,14 @@ async function cancelEmployeeViolation(id){
 async function deleteEmployeeViolation(id){return cancelEmployeeViolation(id);}
 
 async function syncAutomaticBreakViolations(from,to,employeeId=''){
- const employees=(isManagement()?allEmployeesList:employeesList)||[],current=await loadReportData(from,to),breaks=current.breaks||[],penalty=Number(evaluationPenalties['تجاوز الاستراحة']||3);
+ if(!isManagement()) return;
+ const employees=allEmployeesList||[],current=await loadReportData(from,to),breaks=current.breaks||[],penalty=Number(evaluationPenalties['تجاوز الاستراحة']||3);
  for(const b of breaks){const over=Number(b.overage_minutes||0);if(over<=0)continue;if(employeeId&&Number(b.employee_id)!==Number(employeeId))continue;const emp=employees.find(e=>Number(e.id)===Number(b.employee_id));if(!emp)continue;const date=(b.start_time||from).slice(0,10),note=`تجاوز وقت الاستراحة ${over} دقيقة`;const {data:exists,error}=await supabaseClient.from('employee_violations').select('id').eq('employee_id',emp.id).eq('violation_type','تجاوز الاستراحة').eq('violation_date',date).eq('note',note).limit(1);if(error||exists?.length)continue;await supabaseClient.from('employee_violations').insert({employee_id:emp.id,violation_type:'تجاوز الاستراحة',points:penalty,violation_date:date,note,source:'automatic',status:'active',created_by:currentUser?.id||null});}
 }
 function evaluationRating(score){if(score>=95)return'ممتاز';if(score>=90)return'جيد جداً';if(score>=80)return'جيد';if(score>=70)return'مقبول';return'يحتاج تحسين';}
 
 async function generateEmployeeEvaluation(fromArg,toArg,empArg){
+ if(!isManagement()) return showToast('التقييم متاح للإدارة فقط');
  const from=fromArg||document.getElementById('evaluationFrom').value,to=toArg||document.getElementById('evaluationTo').value,employeeId=empArg!==undefined?empArg:document.getElementById('evaluationEmployee').value;if(!from||!to)return showToast('حدد تاريخ البداية والنهاية');if(from>to)return showToast('تاريخ البداية يجب أن يكون قبل النهاية');
  try{
   await loadEvaluationPenaltySettings();await syncAutomaticBreakViolations(from,to,employeeId);const employees=(isManagement()?allEmployeesList:employeesList)||[],selected=employeeId?employees.filter(e=>String(e.id)===String(employeeId)):employees,current=await loadReportData(from,to),violations=await loadViolations(from,to,employeeId),permissions=await loadEvaluationPermissions(from,to,employeeId),days=reportPeriodDays(from,to),area=document.getElementById('employeeEvaluationArea');
@@ -5343,6 +5362,7 @@ async function generateEmployeeEvaluation(fromArg,toArg,empArg){
 }
 
 async function generateWeeklyReport(){
+ if(!isManagement()) return;
  const from=document.getElementById('reportFrom').value;
  const to=document.getElementById('reportTo').value;
  const employeeFilter=document.getElementById('reportEmployee').value;
