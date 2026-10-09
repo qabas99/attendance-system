@@ -1952,22 +1952,33 @@ const BREAK_RULES = {
    BASIC HELPERS
 ========================================================= */
 
-function today(){
- // تاريخ اليوم حسب توقيت النظام المحلي (العراق)، وليس UTC.
- const d = new Date();
- const parts = new Intl.DateTimeFormat('en-CA',{
-  timeZone:'Asia/Baghdad',
-  year:'numeric',
-  month:'2-digit',
-  day:'2-digit'
- }).formatToParts(d);
- const get = type => parts.find(p=>p.type===type)?.value || '';
+const BAGHDAD_TZ='Asia/Baghdad';
+
+// إرجاع التاريخ بصيغة YYYY-MM-DD وفق توقيت بغداد دائماً، بصرف النظر عن إعدادات جهاز المستخدم.
+function baghdadDateOnly(value=new Date()){
+ const parts=new Intl.DateTimeFormat('en-CA',{
+  timeZone:BAGHDAD_TZ,year:'numeric',month:'2-digit',day:'2-digit'
+ }).formatToParts(value);
+ const get=type=>parts.find(p=>p.type===type)?.value||'';
  return `${get('year')}-${get('month')}-${get('day')}`;
 }
 
-// بداية اليوم بتوقيت بغداد محوّلة إلى UTC حتى تُستخدم بأمان مع timestamptz في Supabase.
+function today(){
+ return baghdadDateOnly();
+}
+
+// العراق على +03:00؛ نستخدم حدوداً شاملة البداية وحصرية النهاية لتجنب أخطاء آخر ثانية.
+function baghdadDayStartUtc(dateString){
+ return new Date(`${dateString}T00:00:00+03:00`).toISOString();
+}
+function baghdadNextDayStartUtc(dateString){
+ return new Date(new Date(baghdadDayStartUtc(dateString)).getTime()+86400000).toISOString();
+}
+function baghdadRangeUtc(from,to){
+ return {start:baghdadDayStartUtc(from),end:baghdadNextDayStartUtc(to)};
+}
 function todayStartUtc(){
- return new Date(`${today()}T00:00:00+03:00`).toISOString();
+ return baghdadDayStartUtc(today());
 }
 
 
@@ -1992,16 +2003,11 @@ function formatDate(value){
 
  return new Date(value)
   .toLocaleString(
-   currentLang === 'ar'
-    ? 'ar-IQ'
-    : 'en-US',
+   currentLang === 'ar' ? 'ar-IQ' : 'en-US',
    {
-    year:'numeric',
-    month:'2-digit',
-    day:'2-digit',
-    hour:'2-digit',
-    minute:'2-digit',
-    second:'2-digit'
+    timeZone:BAGHDAD_TZ,
+    year:'numeric',month:'2-digit',day:'2-digit',
+    hour:'2-digit',minute:'2-digit',second:'2-digit'
    }
   );
 
@@ -2015,14 +2021,8 @@ function formatTime(value){
 
  return new Date(value)
   .toLocaleTimeString(
-   currentLang === 'ar'
-    ? 'ar-IQ'
-    : 'en-US',
-   {
-    hour:'2-digit',
-    minute:'2-digit',
-    second:'2-digit'
-   }
+   currentLang === 'ar' ? 'ar-IQ' : 'en-US',
+   {timeZone:BAGHDAD_TZ,hour:'2-digit',minute:'2-digit',second:'2-digit'}
   );
 
 }
@@ -2092,9 +2092,9 @@ function updateClock(){
 
  clock.innerText =
   new Date().toLocaleString(
-   currentLang === 'ar'
-    ? 'ar-IQ'
-    : 'en-US'
+   currentLang === 'ar' ? 'ar-IQ' : 'en-US',
+   {timeZone:BAGHDAD_TZ,year:'numeric',month:'2-digit',day:'2-digit',
+    hour:'2-digit',minute:'2-digit',second:'2-digit'}
   );
 
 }
@@ -4117,12 +4117,8 @@ async function deleteEmployeeDirect(employeeId){
 }
 
 function baghdadDayBounds(){
- const parts=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Baghdad',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());
- const map=Object.fromEntries(parts.map(p=>[p.type,p.value]));
- const day=`${map.year}-${map.month}-${map.day}`;
- const start=new Date(`${day}T00:00:00+03:00`);
- const end=new Date(start.getTime()+86400000);
- return {day,start:start.toISOString(),end:end.toISOString()};
+ const day=today();
+ return {day,start:baghdadDayStartUtc(day),end:baghdadNextDayStartUtc(day)};
 }
 
 async function resetEmployeeBreaks(employeeId){
@@ -4133,7 +4129,7 @@ async function resetEmployeeBreaks(employeeId){
  const {start,end,day}=baghdadDayBounds();
  const {error}=await supabaseClient.from('breaks').delete().eq('employee_id',employeeId).gte('start_time',start).lt('start_time',end);
  if(error){ console.error(error); return showToast('تعذر تصفير الاستراحات: '+error.message); }
- breaksList=breaksList.filter(b=>!(Number(b.employee_id)===Number(employeeId) && String(b.start_time||'').slice(0,10)===day));
+ breaksList=breaksList.filter(b=>!(Number(b.employee_id)===Number(employeeId) && b.start_time && new Date(b.start_time).getTime()>=Date.parse(start) && new Date(b.start_time).getTime()<Date.parse(end)));
  renderTable(); updateStats();
  writeManagementLog('تصفير الاستراحات',employeeId,employee.name,'تم تصفير جميع استراحات اليوم').catch(()=>{});
  showToast(`تم تصفير استراحات ${employee.name}`);
@@ -4145,7 +4141,7 @@ async function resetAllEmployeeBreaks(){
  const {start,end,day}=baghdadDayBounds();
  const {error}=await supabaseClient.from('breaks').delete().gte('start_time',start).lt('start_time',end);
  if(error){ console.error(error); return showToast('تعذر تصفير الاستراحات: '+error.message); }
- breaksList=breaksList.filter(b=>String(b.start_time||'').slice(0,10)!==day);
+ breaksList=breaksList.filter(b=>!b.start_time || new Date(b.start_time).getTime()<Date.parse(start) || new Date(b.start_time).getTime()>=Date.parse(end));
  renderTable(); updateStats();
  writeManagementLog(null,null,'تصفير الاستراحات','تم تصفير جميع استراحات جميع الموظفين لليوم').catch(()=>{});
  showToast('تم تصفير استراحات الجميع');
@@ -5255,71 +5251,37 @@ function subscribeRealtime(){
 ========================================================= */
 
 function getDateOnly(date){
-
- return new Date(date)
-  .toISOString()
-  .slice(0,10);
-
+ return baghdadDateOnly(date);
 }
 
 
 function setCurrentWeek(){
-
- const d =
-  new Date();
-
- const day =
-  d.getDay();
-
- const diff =
-  day===0 ? -6 : 1-day;
-
- const monday =
-  new Date(d);
-
- monday.setDate(
-  d.getDate()+diff
- );
-
- const sunday =
-  new Date(monday);
-
- sunday.setDate(
-  monday.getDate()+6
- );
-
- document.getElementById(
-  'reportFrom'
- ).value =
-  getDateOnly(monday);
-
- document.getElementById(
-  'reportTo'
- ).value =
-  getDateOnly(sunday);
-
+ const d=new Date();
+ const weekdayName=new Intl.DateTimeFormat('en-US',{timeZone:BAGHDAD_TZ,weekday:'short'}).format(d);
+ const weekday={Sun:0,Mon:1,Tue:2,Wed:3,Thu:4,Fri:5,Sat:6}[weekdayName];
+ const monday=dateShift(today(),1-weekday);
+ document.getElementById('reportFrom').value=monday;
+ document.getElementById('reportTo').value=dateShift(monday,6);
 }
 
-
 function dateShift(dateString, days){
- const d=new Date(dateString+'T00:00:00');
- d.setDate(d.getDate()+days);
- return getDateOnly(d);
+ const [y,m,d]=dateString.split('-').map(Number);
+ const date=new Date(Date.UTC(y,m-1,d+days));
+ return `${date.getUTCFullYear()}-${String(date.getUTCMonth()+1).padStart(2,'0')}-${String(date.getUTCDate()).padStart(2,'0')}`;
 }
 
 function reportPeriodDays(from,to){
- const a=new Date(from+'T00:00:00');
- const b=new Date(to+'T00:00:00');
- return Math.max(1,Math.round((b-a)/86400000)+1);
+ const [fy,fm,fd]=from.split('-').map(Number),[ty,tm,td]=to.split('-').map(Number);
+ return Math.max(1,Math.round((Date.UTC(ty,tm-1,td)-Date.UTC(fy,fm-1,fd))/86400000)+1);
 }
 
 async function loadReportData(from,to){
- const startISO=from+'T00:00:00';
- const endISO=new Date(to+'T23:59:59').toISOString();
+ const {start:startISO,end:endISO}=baghdadRangeUtc(from,to);
  const [{data:attendance,error:attendanceError},{data:breaks,error:breakError},{data:work_sessions,error:workError}]=await Promise.all([
   supabaseClient.from('attendance').select('*').gte('attendance_date',from).lte('attendance_date',to),
-  supabaseClient.from('breaks').select('*').gte('start_time',startISO).lte('start_time',endISO),
-  supabaseClient.from('work_sessions').select('*').lt('start_time',new Date(new Date(to+'T23:59:59').getTime()+1000).toISOString()).or(`end_time.is.null,end_time.gte.${startISO}`)
+  supabaseClient.from('breaks').select('*').gte('start_time',startISO).lt('start_time',endISO),
+  // اجلب جلسات العمل التي تتقاطع مع الفترة، حتى لو بدأت قبل بدايتها أو انتهت بعدها.
+  supabaseClient.from('work_sessions').select('*').lt('start_time',endISO).or(`end_time.is.null,end_time.gt.${startISO}`)
  ]);
  if(attendanceError){console.error(attendanceError);throw new Error('تعذر تحميل بيانات الحضور');}
  if(breakError){console.error(breakError);throw new Error('تعذر تحميل بيانات الاستراحات');}
@@ -5328,20 +5290,23 @@ async function loadReportData(from,to){
 }
 
 function sumWorkSessions(sessions,from,to){
- const rangeStart=new Date(from+'T00:00:00').getTime();
- const rangeEnd=new Date(to+'T23:59:59').getTime();
- const now=Date.now();
+ const {start,end}=baghdadRangeUtc(from,to);
+ const rangeStart=Date.parse(start),rangeEnd=Date.parse(end),now=Date.now();
  return (sessions||[]).reduce((sum,s)=>{
-  const start=Math.max(new Date(s.start_time).getTime(),rangeStart);
-  const end=Math.min(s.end_time?new Date(s.end_time).getTime():now,rangeEnd);
-  if(end<=start) return sum;
-  return sum+Math.floor((end-start)/60000);
+  const sessionStart=Date.parse(s.start_time);
+  if(!Number.isFinite(sessionStart)) return sum;
+  const startAt=Math.max(sessionStart,rangeStart);
+  const rawEnd=s.end_time?Date.parse(s.end_time):now;
+  if(!Number.isFinite(rawEnd)) return sum;
+  const endAt=Math.min(rawEnd,rangeEnd,now);
+  if(endAt<=startAt) return sum;
+  return sum+Math.floor((endAt-startAt)/60000);
  },0);
 }
 
 
-function complianceScoreForPeriod(employee, breakRows){
- const override=employee?.compliance_override;
+function complianceScoreForPeriod(employee, breakRows, useOverride=true){
+ const override=useOverride ? employee?.compliance_override : null;
  if(override!==null && override!==undefined && Number.isFinite(Number(override))){
   return Math.max(0,Math.min(100,Math.round(Number(override))));
  }
@@ -5475,7 +5440,8 @@ async function loadViolations(from,to,employeeId=''){
  const {data,error}=await q;if(error)throw error;return (data||[]).filter(v=>String(v.status||'active').toLowerCase()!=='cancelled');
 }
 async function loadEvaluationPermissions(from,to,employeeId=''){
- let q=supabaseClient.from('permission_requests').select('*').gte('created_at',from+'T00:00:00').lte('created_at',to+'T23:59:59');
+ const {start,end}=baghdadRangeUtc(from,to);
+ let q=supabaseClient.from('permission_requests').select('*').gte('created_at',start).lt('created_at',end);
  if(employeeId)q=q.eq('employee_id',employeeId);
  const {data,error}=await q;if(error)throw error;return data||[];
 }
@@ -5575,8 +5541,8 @@ async function generateWeeklyReport(){
    const previousBreakCount=prevBreaks.length;
    const previousOverageMinutes=prevBreaks.reduce((sum,b)=>sum+Number(b.overage_minutes||0),0);
 
-   const compliance=complianceScoreForPeriod(employee,empBreaks);
-   const previousCompliance=complianceScoreForPeriod(employee,prevBreaks);
+   const compliance=complianceScoreForPeriod(employee,empBreaks,false);
+   const previousCompliance=complianceScoreForPeriod(employee,prevBreaks,false);
    const automaticRating=automaticWeeklyRating(compliance,overageMinutes);
    const review=reviews.get(String(employee.id))||null;
 
