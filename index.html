@@ -877,9 +877,19 @@ tbody tr.employee-break-row.break-authorized:hover td{background:#374151 !import
  color:#1e3a5f;
  font-size:18px;
 }
-#dashboardEmployeeStatusSection .table-wrap{max-height:58vh;overflow:auto}
-#dashboardEmployeeStatusSection table{min-width:520px}
-#dashboardEmployeeStatusSection th,#dashboardEmployeeStatusSection td{padding:12px 10px}
+#dashboardEmployeeStatusSection{width:100%;box-sizing:border-box;margin-top:16px;padding:20px;background:linear-gradient(145deg,#061a31,#082747);border:1px solid #164875;border-radius:16px;color:#f1f7ff;overflow:hidden}
+#dashboardEmployeeStatusSection h3{color:#f1f7ff;font-size:clamp(20px,2vw,30px);margin:0 0 14px}
+#dashboardEmployeeStatusSection .table-wrap{max-height:75vh;overflow:auto;width:100%}
+#dashboardEmployeeStatusSection table{width:100%;min-width:900px;border-collapse:separate;border-spacing:0 4px;table-layout:auto}
+#dashboardEmployeeStatusSection th,#dashboardEmployeeStatusSection td{padding:14px 12px;text-align:center;font-size:clamp(13px,1.15vw,18px)}
+#dashboardEmployeeStatusSection thead th{background:#0b3156;color:#eaf4ff;position:sticky;top:0;z-index:2}
+#dashboardEmployeeStatusSection tbody tr.status-row-present{background:rgba(0,150,105,.28)}
+#dashboardEmployeeStatusSection tbody tr.status-row-break{background:rgba(210,126,0,.30)}
+#dashboardEmployeeStatusSection tbody tr.status-row-absent{background:rgba(200,30,55,.42)}
+#dashboardEmployeeStatusSection tbody td{border-top:1px solid rgba(120,170,220,.18);border-bottom:1px solid rgba(120,170,220,.18)}
+.dashboard-employee-photo{width:46px;height:46px;border-radius:50%;object-fit:cover;display:inline-flex;align-items:center;justify-content:center;background:#164875;color:#fff;border:2px solid #8ebbe8;font-size:24px}
+#dashboardEmployeeStatusSection .muted{color:#bdd0e5!important}
+@media(max-width:700px){#dashboardEmployeeStatusSection{padding:10px}#dashboardEmployeeStatusSection th,#dashboardEmployeeStatusSection td{padding:10px 8px}}
 .dashboard-status-pill{display:inline-block;border-radius:999px;padding:6px 12px;font-weight:800;white-space:nowrap}
 .dashboard-status-present{background:#dcfce7;color:#166534;border:1px solid #86efac}
 .dashboard-status-break{background:#fef3c7;color:#92400e;border:1px solid #fcd34d}
@@ -1406,11 +1416,11 @@ html[data-theme="dark"] .weekly-color-control label{color:#e5edf8 !important}
 
    <div class="dashboard-chart-box" id="dashboardEmployeeStatusSection">
     <h3>حالة الموظفين الحالية</h3>
-    <div class="muted" style="margin-bottom:10px">تتحدث القائمة تلقائياً وتعرض حالة كل موظف حسب الحضور والاستراحة المسجلة.</div>
+    <div class="muted" style="margin-bottom:14px">عرض مباشر لحالة الموظفين — يتحدث تلقائياً.</div>
     <div class="table-wrap">
-     <table style="min-width:520px">
-      <thead><tr><th>ت</th><th>اسم الموظف</th><th>الحالة الحالية</th><th>نوع الاستراحة</th><th>مدة الحالة</th></tr></thead>
-      <tbody id="dashboardEmployeeStatusBody"><tr><td colspan="5">جارٍ تحميل بيانات الموظفين...</td></tr></tbody>
+     <table>
+      <thead><tr><th>#</th><th>صورة الموظف</th><th>اسم الموظف</th><th>الحالة الحالية</th><th>وقت الدخول</th><th>نوع الاستراحة</th><th>مدة الاستراحة</th><th>إجمالي وقت العمل اليوم</th></tr></thead>
+      <tbody id="dashboardEmployeeStatusBody"><tr><td colspan="8">جارٍ تحميل بيانات الموظفين...</td></tr></tbody>
      </table>
     </div>
     <div class="muted" id="dashboardStatusUpdatedAt" style="font-size:12px;margin-top:8px"></div>
@@ -4291,29 +4301,31 @@ function updateCustomDashboard(){
  const bar=document.getElementById('dashWorkProgress');
  if(bar) bar.style.width=workPercent+'%';
 
- // قائمة مستقلة للعرض على شاشة ثانية: أسماء الموظفين وحالتهم الفعلية.
+ // جدول حالة الموظفين داخل لوحة التحكم فقط.
  const statusBody=document.getElementById('dashboardEmployeeStatusBody');
  if(statusBody){
   const esc=value=>String(value??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
   if(!employeesList.length){
-   statusBody.innerHTML='<tr><td colspan="5">لا يوجد موظفون مسجلون.</td></tr>';
+   statusBody.innerHTML='<tr><td colspan="8">لا يوجد موظفون مسجلون.</td></tr>';
   }else{
    statusBody.innerHTML=employeesList.map((employee,index)=>{
     const attendance=getAttendance(employee.id);
     const activeBreak=getActiveBreak(employee.id);
-    let label,cls,breakLabel='—',duration='—';
+    let label,cls,rowCls,breakLabel='—',breakDuration='—';
     if(activeBreak){
-     label='في استراحة'; cls='dashboard-status-break';
+     label='في استراحة'; cls='dashboard-status-break'; rowCls='status-row-break';
      breakLabel=({smoking:'تدخين',dinner:'طعام',emergency:'طارئة',authorized:'مصرّح بها'}[activeBreak.break_type]||activeBreak.break_type||'استراحة');
-     duration=dashboardMinutesToClock(minutesBetween(activeBreak.start_time,new Date()));
+     breakDuration=dashboardMinutesToClock(minutesBetween(activeBreak.start_time,new Date()));
     }else if(attendance?.present){
-     label='متواجد'; cls='dashboard-status-present';
-     const session=(workSessionsList||[]).find(x=>Number(x.employee_id)===Number(employee.id)&&!x.end_time);
-     if(session?.start_time) duration=dashboardMinutesToClock(minutesBetween(session.start_time,new Date()));
+     label='متواجد'; cls='dashboard-status-present'; rowCls='status-row-present';
     }else{
-     label='غير متواجد'; cls='dashboard-status-absent';
+     label='غير متواجد'; cls='dashboard-status-absent'; rowCls='status-row-absent';
     }
-    return `<tr><td>${index+1}</td><td>${esc(employee.name||'—')}</td><td><span class="dashboard-status-pill ${cls}">${label}</span></td><td>${esc(breakLabel)}</td><td>${esc(duration)}</td></tr>`;
+    const photo=employee.photo_url||employee.photoUrl||'';
+    const photoHtml=photo?`<img class="dashboard-employee-photo" src="${esc(photo)}" alt="${esc(employee.name||'الموظف')}">`:'<span class="dashboard-employee-photo">👤</span>';
+    const checkIn=attendance?.check_in?formatTime(attendance.check_in):'—';
+    const workDuration=dashboardMinutesToClock(getTodayActualWorkMinutes(employee.id));
+    return `<tr class="${rowCls}"><td>${index+1}</td><td>${photoHtml}</td><td><strong>${esc(employee.name||'—')}</strong></td><td><span class="dashboard-status-pill ${cls}">${label}</span></td><td>${esc(checkIn)}</td><td>${esc(breakLabel)}</td><td>${esc(breakDuration)}</td><td>${esc(workDuration)}</td></tr>`;
    }).join('');
   }
  }
