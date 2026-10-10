@@ -906,6 +906,22 @@ html[data-theme="dark"] table tbody tr.employee-break-row.break-authorized td{ba
 #dashboardEmployeeStatusSection tbody td{border-top:1px solid rgba(120,170,220,.18);border-bottom:1px solid rgba(120,170,220,.18)}
 .dashboard-employee-photo{width:46px;height:46px;border-radius:50%;object-fit:cover;display:inline-flex;align-items:center;justify-content:center;background:#164875;color:#fff;border:2px solid #8ebbe8;font-size:24px}
 #dashboardEmployeeStatusSection .muted{color:#bdd0e5!important}
+
+/* تلوين كل خلايا صف الموظف في جدول حالة الموظفين بلوحة التحكم، لكل المستخدمين */
+#dashboardEmployeeStatusSection table tbody tr.status-row-break.break-smoking > td,
+#dashboardEmployeeStatusSection table tbody tr.status-row-break.break-smoking:hover > td{background:#4a2f05!important;color:#fff!important}
+#dashboardEmployeeStatusSection table tbody tr.status-row-break.break-dinner > td,
+#dashboardEmployeeStatusSection table tbody tr.status-row-break.break-dinner:hover > td{background:#12355b!important;color:#fff!important}
+#dashboardEmployeeStatusSection table tbody tr.status-row-break.break-emergency > td,
+#dashboardEmployeeStatusSection table tbody tr.status-row-break.break-emergency:hover > td{background:#541b1b!important;color:#fff!important}
+#dashboardEmployeeStatusSection table tbody tr.status-row-break.break-authorized > td,
+#dashboardEmployeeStatusSection table tbody tr.status-row-break.break-authorized:hover > td{background:#374151!important;color:#fff!important}
+html[data-theme="light"] #dashboardEmployeeStatusSection table tbody tr.status-row-break.break-smoking > td{background:#fef3c7!important;color:#78350f!important}
+html[data-theme="light"] #dashboardEmployeeStatusSection table tbody tr.status-row-break.break-dinner > td{background:#dbeafe!important;color:#1e3a8a!important}
+html[data-theme="light"] #dashboardEmployeeStatusSection table tbody tr.status-row-break.break-emergency > td{background:#fee2e2!important;color:#7f1d1d!important}
+html[data-theme="light"] #dashboardEmployeeStatusSection table tbody tr.status-row-break.break-authorized > td{background:#e5e7eb!important;color:#1f2937!important}
+#dashboardEmployeeStatusSection table tbody tr.status-row-break > td{transition:background-color .2s ease,color .2s ease}
+
 /* Full-width employee panel, scaled slightly smaller to fit the screen */
 .dashboard-summary{grid-template-columns:repeat(3,minmax(0,1fr))!important;align-items:stretch;min-width:0}
 #dashboardEmployeeStatusSection{grid-column:1 / -1!important;width:100%!important;max-width:100%!important;min-width:0!important;justify-self:stretch!important;margin-top:12px!important;padding:clamp(10px,1.2vw,18px)!important;box-sizing:border-box!important}
@@ -4459,8 +4475,10 @@ function updateCustomDashboard(){
     const activeBreak=getActiveBreak(employee.id);
     let label,cls,rowCls,breakLabel='—',breakDuration='—';
     if(activeBreak){
-     label='في استراحة'; cls='dashboard-status-break'; rowCls='status-row-break';
-     breakLabel=({smoking:'تدخين',dinner:'طعام',emergency:'طارئة',authorized:'مصرّح بها'}[activeBreak.break_type]||activeBreak.break_type||'استراحة');
+     label='في استراحة'; cls='dashboard-status-break';
+     const breakType=String(activeBreak.break_type||'authorized').toLowerCase();
+     rowCls='status-row-break break-'+(['smoking','dinner','emergency','authorized'].includes(breakType)?breakType:'authorized');
+     breakLabel=({smoking:'تدخين',dinner:'طعام',emergency:'طارئة',authorized:'مصرّح بها'}[breakType]||activeBreak.break_type||'استراحة');
      breakDuration=dashboardMinutesToClock(minutesBetween(activeBreak.start_time,new Date()));
     }else if(attendance?.present){
      label='متواجد'; cls='dashboard-status-present'; rowCls='status-row-present';
