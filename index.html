@@ -1342,7 +1342,11 @@ html[data-theme="dark"] .weekly-color-control label{color:#e5edf8 !important}
 
   <!-- سجل الطلبات المتأخرة -->
   <section class="card" id="lateOrdersCard">
-   <h2>سجل الطلبات المتأخرة</h2>
+   <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+    <h2 style="margin:0">سجل الطلبات المتأخرة</h2>
+    <button type="button" class="btn-dark" id="toggleLateOrdersVisibilityBtn" onclick="toggleLateOrdersVisibility()" aria-expanded="true">إخفاء قائمة السجلات</button>
+   </div>
+   <div id="lateOrdersContent">
    <p class="muted" style="margin-top:-6px;margin-bottom:14px">يستطيع كل موظف تسجيل رقم الطلب واسم المطعم وسبب التأخير، وتظهر السجلات للجميع.</p>
    <form id="lateOrderForm" onsubmit="submitLateOrder(event)">
     <div class="form" style="grid-template-columns:1fr 1fr">
@@ -6627,6 +6631,17 @@ async function deactivateLateOrderReason(id){
   if(error) throw error;
   await loadLateOrderReasons();
  }catch(e){alert('تعذر تعطيل السبب: '+(e.message||''));}
+}
+
+function toggleLateOrdersVisibility(){
+ const card=document.getElementById('lateOrdersCard');
+ const table=card ? card.querySelector('.table-wrap') : null;
+ const btn=document.getElementById('toggleLateOrdersVisibilityBtn');
+ if(!table||!btn) return;
+ const willHide=table.style.display!=='none';
+ table.style.display=willHide?'none':'';
+ btn.textContent=willHide?'إظهار قائمة السجلات':'إخفاء قائمة السجلات';
+ btn.setAttribute('aria-expanded',String(!willHide));
 }
 
 function updateLateOrdersAdminControls(){
