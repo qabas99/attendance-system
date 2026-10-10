@@ -75,7 +75,13 @@ function markDisplaySections(){
 
 function prepareDisplayModes(){
  markDisplaySections();
- restoreDisplayMode();
+ const screenMode=new URLSearchParams(window.location.search).get('screen')==='1';
+ if(screenMode){
+  document.body.classList.add('dedicated-screen-mode');
+  setDisplayMode('dashboard');
+ }else{
+  restoreDisplayMode();
+ }
 }
 
 
@@ -974,6 +980,23 @@ body.display-dashboard-only [data-section="weekly-report"]{
 body.display-dashboard-only .non-dashboard-section{
  display:none !important;
 }
+/* شاشة العرض المخصصة: لوحة التحكم فقط وبملء الشاشة */
+body.dedicated-screen-mode #displayModeBar,
+body.dedicated-screen-mode #themeToggleBtn,
+body.dedicated-screen-mode header,
+body.dedicated-screen-mode #userBar,
+body.dedicated-screen-mode .userbar,
+body.dedicated-screen-mode .actions:not(.dashboard-actions){
+ display:none !important;
+}
+body.dedicated-screen-mode{overflow-x:hidden;}
+body.dedicated-screen-mode .dashboard-display,
+body.dedicated-screen-mode #dashboardSection,
+body.dedicated-screen-mode .dashboard-section{
+ width:100% !important;
+ max-width:none !important;
+}
+
 body.display-weekly-only .non-weekly-section{
  display:none !important;
 }
