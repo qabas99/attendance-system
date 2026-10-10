@@ -2453,6 +2453,7 @@ function applyPermissions(){
  const management = isManagement();
  const employee = currentProfile?.role === 'employee';
  const admin = isAdmin();
+ const screen = currentProfile?.role === 'screen';
 
  document
   .querySelectorAll('.management-only, .management-section')
@@ -2472,13 +2473,36 @@ function applyPermissions(){
    el.style.display = admin ? '' : 'none';
   });
 
+ if(screen){
+  // Dedicated screen account: show only the read-only dashboard panel.
+  document.body.classList.add('dedicated-screen-mode');
+  document.querySelectorAll('.container > *').forEach(el=>{
+   el.style.display = 'none';
+  });
+  const dashboard = document.getElementById('customDashboard');
+  if(dashboard){
+   dashboard.style.display = 'block';
+   dashboard.classList.remove('management-section','employee-hidden');
+  }
+  const bar = document.getElementById('userBar');
+  if(bar) bar.style.display = 'none';
+  const login = document.getElementById('loginScreen');
+  if(login) login.style.display = 'none';
+  // Remove visible controls from the display-only dashboard.
+  document.querySelectorAll('#customDashboard button, #customDashboard input, #customDashboard select, #customDashboard textarea').forEach(el=>{
+   el.style.display = 'none';
+  });
+ }
+
  const roleNote = document.getElementById('roleNote');
  if(roleNote){
-  roleNote.innerText = employee
-   ? 'وضع الموظف: يمكنك تسجيل حضورك وإدارة بريكاتك ووقتها فقط.'
-   : admin
-    ? 'وضع Admin: جميع صلاحيات الإدارة متاحة.'
-    : 'وضع المدير: صلاحيات الإدارة والتقارير متاحة.';
+  roleNote.innerText = screen
+   ? 'وضع الشاشة: عرض فقط.'
+   : employee
+    ? 'وضع الموظف: يمكنك تسجيل حضورك وإدارة بريكاتك ووقتها فقط.'
+    : admin
+     ? 'وضع Admin: جميع صلاحيات الإدارة متاحة.'
+     : 'وضع المدير: صلاحيات الإدارة والتقارير متاحة.';
  }
 
 }
