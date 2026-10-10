@@ -728,6 +728,17 @@ tbody tr.employee-break-row.break-emergency td,
 tbody tr.employee-break-row.break-emergency:hover td{background:#541b1b !important;color:#ffffff !important}
 tbody tr.employee-break-row.break-authorized td,
 tbody tr.employee-break-row.break-authorized:hover td{background:#374151 !important;color:#ffffff !important}
+/* تلوين صف الموظف بالكامل أثناء الاستراحة حسب نوعها */
+table tbody tr.employee-break-row{box-shadow:inset 5px 0 0 rgba(255,255,255,.28)}
+table tbody tr.employee-break-row td{background-color:inherit; transition:background-color .2s ease,color .2s ease}
+html[data-theme="light"] table tbody tr.employee-break-row.break-smoking td{background:#fef3c7 !important;color:#78350f !important}
+html[data-theme="light"] table tbody tr.employee-break-row.break-dinner td{background:#dbeafe !important;color:#1e3a8a !important}
+html[data-theme="light"] table tbody tr.employee-break-row.break-emergency td{background:#fee2e2 !important;color:#7f1d1d !important}
+html[data-theme="light"] table tbody tr.employee-break-row.break-authorized td{background:#e5e7eb !important;color:#1f2937 !important}
+html[data-theme="dark"] table tbody tr.employee-break-row.break-smoking td{background:#4a2f05 !important;color:#fff !important}
+html[data-theme="dark"] table tbody tr.employee-break-row.break-dinner td{background:#12355b !important;color:#fff !important}
+html[data-theme="dark"] table tbody tr.employee-break-row.break-emergency td{background:#541b1b !important;color:#fff !important}
+html[data-theme="dark"] table tbody tr.employee-break-row.break-authorized td{background:#374151 !important;color:#fff !important}
 
 .stat span{color:#64748b !important}
 .stat b{color:#1e3a5f !important}
@@ -982,7 +993,6 @@ body.display-dashboard-only .non-dashboard-section{
 }
 /* شاشة العرض المخصصة: لوحة التحكم فقط وبملء الشاشة */
 body.dedicated-screen-mode #displayModeBar,
-body.dedicated-screen-mode #themeToggleBtn,
 body.dedicated-screen-mode header,
 body.dedicated-screen-mode #userBar,
 body.dedicated-screen-mode .userbar,
@@ -1322,7 +1332,8 @@ html[data-theme="dark"] #themeToggleBtn{
  border:1px solid #cbd5e1 !important;
  position:fixed !important;
  top:12px !important;
- left:12px !important;
+ right:12px !important;
+ left:auto !important;
  z-index:99999 !important;
 }
 html[data-theme="light"] #themeToggleBtn{
@@ -1331,7 +1342,8 @@ html[data-theme="light"] #themeToggleBtn{
  border:1px solid #334155 !important;
  position:fixed !important;
  top:12px !important;
- left:12px !important;
+ right:12px !important;
+ left:auto !important;
  z-index:99999 !important;
 }
 html[data-theme="dark"] .weekly-color-control label{color:#e5edf8 !important}
@@ -2486,6 +2498,18 @@ function applyPermissions(){
   }
   const bar = document.getElementById('userBar');
   if(bar) bar.style.display = 'none';
+  // Keep a dedicated, visible logout control for the read-only screen account.
+  let screenLogout = document.getElementById('screenLogoutButton');
+  if(!screenLogout){
+   screenLogout = document.createElement('button');
+   screenLogout.id = 'screenLogoutButton';
+   screenLogout.type = 'button';
+   screenLogout.textContent = 'تسجيل الخروج';
+   screenLogout.setAttribute('aria-label', 'تسجيل الخروج');
+   screenLogout.onclick = logout;
+   screenLogout.style.cssText = 'position:fixed;top:12px;left:12px;z-index:99999;background:#dc2626;color:#fff;border:0;border-radius:9px;padding:10px 16px;font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 3px 10px rgba(0,0,0,.18);';
+   document.body.appendChild(screenLogout);
+  }
   const login = document.getElementById('loginScreen');
   if(login) login.style.display = 'none';
   // Remove visible controls from the display-only dashboard.
