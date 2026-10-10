@@ -1344,7 +1344,6 @@ html[data-theme="dark"] .weekly-color-control label{color:#e5edf8 !important}
   <section class="card" id="lateOrdersCard">
    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
     <h2 style="margin:0">سجل الطلبات المتأخرة</h2>
-    <button type="button" class="btn-dark" id="toggleLateOrdersVisibilityBtn" onclick="toggleLateOrdersVisibility()" aria-expanded="true">إخفاء قائمة السجلات</button>
    </div>
    <div id="lateOrdersContent">
    <p class="muted" style="margin-top:-6px;margin-bottom:14px">يستطيع كل موظف تسجيل رقم الطلب واسم المطعم وسبب التأخير، وتظهر السجلات للجميع.</p>
@@ -1370,6 +1369,7 @@ html[data-theme="dark"] .weekly-color-control label{color:#e5edf8 !important}
     <div class="actions" style="justify-content:flex-start;margin-top:10px">
      <button type="submit" class="btn-blue" id="lateOrderSubmitBtn">تسجيل الطلب المتأخر</button>
      <button type="button" class="btn-dark" onclick="loadLateOrders()">تحديث السجل</button>
+     <button type="button" class="btn-dark" id="toggleLateOrdersVisibilityBtn" onclick="toggleLateOrdersVisibility()" aria-expanded="true">إخفاء قائمة السجلات</button>
      <button type="button" class="btn-dark" id="clearLateOrdersBtn" onclick="clearLateOrdersSystemOnly()" style="display:none;background:#a93226">تصفير سجل النظام</button>
     </div>
    </form>
