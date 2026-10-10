@@ -1340,6 +1340,44 @@ html[data-theme="dark"] .weekly-color-control label{color:#e5edf8 !important}
 
 <div class="container">
 
+  <!-- سجل الطلبات المتأخرة -->
+  <section class="card" id="lateOrdersCard">
+   <h2>سجل الطلبات المتأخرة</h2>
+   <p class="muted" style="margin-top:-6px;margin-bottom:14px">يستطيع كل موظف تسجيل رقم الطلب واسم المطعم وسبب التأخير، وتظهر السجلات للجميع.</p>
+   <form id="lateOrderForm" onsubmit="submitLateOrder(event)">
+    <div class="form" style="grid-template-columns:1fr 1fr">
+     <input id="lateOrderNumber" required maxlength="100" placeholder="رقم الطلب">
+     <input id="lateRestaurantName" required maxlength="200" placeholder="اسم المطعم">
+    </div>
+    <div style="margin-top:10px">
+     <select id="lateOrderReasonSelect" required onchange="handleLateReasonChange()" style="width:100%;padding:12px;border-radius:8px">
+      <option value="">اختر سبب التأخير</option>
+     </select>
+     <textarea id="lateOrderReason" maxlength="2000" placeholder="اكتب تفاصيل السبب الآخر" style="display:none;margin-top:10px" ></textarea>
+    </div>
+    <div id="lateReasonAdminPanel" class="management-section" style="display:none;margin-top:14px;padding:12px;border:1px solid var(--border-color,#ddd);border-radius:10px">
+     <h3 style="margin-top:0">إدارة أسباب التأخير (للمسؤول والإدارة)</h3>
+     <div class="form" style="grid-template-columns:1fr auto">
+      <input id="newLateReasonName" maxlength="150" placeholder="أضف سبباً ثابتاً جديداً">
+      <button type="button" class="btn-blue" onclick="addLateOrderReason()">إضافة السبب</button>
+     </div>
+     <div id="lateReasonsAdminList" style="margin-top:8px"></div>
+    </div>
+    <div class="actions" style="justify-content:flex-start;margin-top:10px">
+     <button type="submit" class="btn-blue" id="lateOrderSubmitBtn">تسجيل الطلب المتأخر</button>
+     <button type="button" class="btn-dark" onclick="loadLateOrders()">تحديث السجل</button>
+    </div>
+   </form>
+   <div id="lateOrdersMessage" class="muted" role="status" style="margin:10px 0"></div>
+   <div class="table-wrap" style="margin-top:12px">
+    <table style="min-width:850px">
+     <thead><tr><th>تاريخ التسجيل</th><th>رقم الطلب</th><th>اسم المطعم</th><th>سبب التأخير</th><th>الموظف المسجل</th></tr></thead>
+     <tbody id="lateOrdersBody"><tr><td colspan="5">جارٍ تحميل سجل الطلبات...</td></tr></tbody>
+    </table>
+   </div>
+  </section>
+
+
  <!-- لوحة التحكم المخصصة -->
  <section class="dashboard-display management-section employee-hidden" id="customDashboard">
   <div class="dashboard-title">
@@ -2313,6 +2351,9 @@ async function initializeApplication(){
   applyPermissions();
 
   await loadAllData();
+  await loadLateOrders();
+  await loadLateOrderReasons();
+  subscribeLateOrdersRealtime();
   subscribeRealtime();
   if(isAdmin()) loadAccountProfiles();
 
@@ -6504,6 +6545,138 @@ document.addEventListener('DOMContentLoaded',()=>{
  applyLanguage();
  updateThemeButton();
 });
+</script>
+
+
+<script>
+/* ===== سجل الطلبات المتأخرة =====
+   ضع رابط Web App الخاص بـ Google Apps Script في المتغير أدناه بعد إعداد الشيت.
+*/
+const LATE_ORDERS_SHEETS_WEBHOOK = 'https://script.google.com/macros/s/AKfycbxnjEYscunewL0V5dA6PZoucLOuyFKSz49j66qhVf_HjUOyWw7Kt6vPslahQNCTwicTew/exec';
+let lateOrdersRealtimeChannel = null;
+let lateOrderReasonsCache = [];
+
+function handleLateReasonChange(){
+ const select=document.getElementById('lateOrderReasonSelect');
+ const field=document.getElementById('lateOrderReason');
+ const other=select.value==='__other__';
+ field.style.display=other?'block':'none';
+ field.required=other;
+ if(!other) field.value='';
+}
+
+async function loadLateOrderReasons(){
+ const select=document.getElementById('lateOrderReasonSelect');
+ if(!select) return;
+ try{
+  const {data,error}=await supabaseClient.from('late_order_reasons').select('id,reason,is_active').eq('is_active',true).order('sort_order').order('reason');
+  if(error) throw error;
+  lateOrderReasonsCache=data||[];
+  select.innerHTML='<option value="">اختر سبب التأخير</option>'+lateOrderReasonsCache.map(r=>`<option value="${esc(r.reason)}">${esc(r.reason)}</option>`).join('')+'<option value="__other__">سبب آخر — أكتب التفاصيل</option>';
+  renderLateOrderReasonAdmin();
+ }catch(e){
+  console.error('loadLateOrderReasons',e);
+  // Useful fallback until the setup SQL has been run.
+  select.innerHTML='<option value="">اختر سبب التأخير</option>'+['تأخر تجهيز المطعم','تأخر السائق','ضغط بالطلبات','خطأ بالطلب','مشكلة بالدفع'].map(r=>`<option value="${esc(r)}">${esc(r)}</option>`).join('')+'<option value="__other__">سبب آخر — أكتب التفاصيل</option>';
+  renderLateOrderReasonAdmin();
+ }
+ handleLateReasonChange();
+}
+
+function renderLateOrderReasonAdmin(){
+ const panel=document.getElementById('lateReasonAdminPanel');
+ const list=document.getElementById('lateReasonsAdminList');
+ if(!panel||!list) return;
+ const allowed=typeof isManagement==='function'&&isManagement();
+ panel.style.display=allowed?'block':'none';
+ if(!allowed) return;
+ list.innerHTML=lateOrderReasonsCache.length?lateOrderReasonsCache.map(r=>`<div style="display:flex;gap:8px;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid #ddd"><span>${esc(r.reason)}</span><div style="display:flex;gap:6px"><button type="button" class="btn-dark" onclick="editLateOrderReason(${Number(r.id)})">تعديل</button><button type="button" class="btn-dark" onclick="deactivateLateOrderReason(${Number(r.id)})">تعطيل</button></div></div>`).join(''):'<p class="muted">لا توجد أسباب ثابتة محفوظة بعد.</p>';
+}
+
+async function addLateOrderReason(){
+ if(!isManagement()) return;
+ const input=document.getElementById('newLateReasonName');
+ const reason=input.value.trim();
+ if(!reason){alert('اكتب السبب أولاً.');return;}
+ try{
+  const {error}=await supabaseClient.from('late_order_reasons').insert({reason,created_by:currentUser.id,is_active:true});
+  if(error) throw error;
+  input.value=''; await loadLateOrderReasons();
+ }catch(e){alert('تعذرت إضافة السبب. تأكد من تشغيل ملف SQL. '+(e.message||''));}
+}
+
+async function editLateOrderReason(id){
+ if(!isManagement()) return;
+ const old=lateOrderReasonsCache.find(r=>Number(r.id)===Number(id));
+ if(!old) return;
+ const reason=prompt('عدّل سبب التأخير:',old.reason);
+ if(reason===null) return;
+ if(!reason.trim()){alert('السبب لا يمكن أن يكون فارغاً.');return;}
+ try{
+  const {error}=await supabaseClient.from('late_order_reasons').update({reason:reason.trim()}).eq('id',id);
+  if(error) throw error;
+  await loadLateOrderReasons();
+ }catch(e){alert('تعذر تعديل السبب: '+(e.message||''));}
+}
+
+async function deactivateLateOrderReason(id){
+ if(!isManagement()||!confirm('تعطيل هذا السبب؟ سيبقى ظاهراً في السجلات القديمة ولن يظهر للاختيار الجديد.')) return;
+ try{
+  const {error}=await supabaseClient.from('late_order_reasons').update({is_active:false}).eq('id',id);
+  if(error) throw error;
+  await loadLateOrderReasons();
+ }catch(e){alert('تعذر تعطيل السبب: '+(e.message||''));}
+}
+
+function subscribeLateOrdersRealtime(){
+ if(lateOrdersRealtimeChannel){supabaseClient.removeChannel(lateOrdersRealtimeChannel);}
+ lateOrdersRealtimeChannel=supabaseClient.channel('late-orders-live-'+(currentUser?.id||'user'))
+  .on('postgres_changes',{event:'*',schema:'public',table:'late_orders'},()=>loadLateOrders())
+  .on('postgres_changes',{event:'*',schema:'public',table:'late_order_reasons'},()=>loadLateOrderReasons())
+  .subscribe();
+}
+
+async function loadLateOrders(){
+ const body=document.getElementById('lateOrdersBody');
+ const msg=document.getElementById('lateOrdersMessage');
+ if(!body) return;
+ body.innerHTML='<tr><td colspan="5">جارٍ تحميل السجل...</td></tr>';
+ try{
+  const {data,error}=await supabaseClient.from('late_orders')
+   .select('id,order_number,restaurant_name,delay_reason,employee_name,created_at')
+   .order('created_at',{ascending:false}).limit(500);
+  if(error) throw error;
+  if(!data || !data.length){body.innerHTML='<tr><td colspan="5">لا توجد طلبات متأخرة مسجلة حالياً.</td></tr>';if(msg)msg.textContent='';return;}
+  body.innerHTML=data.map(r=>{const date=r.created_at?new Date(r.created_at).toLocaleString('ar-IQ'):'—';return `<tr><td>${esc(date)}</td><td>${esc(r.order_number)}</td><td>${esc(r.restaurant_name)}</td><td style="white-space:pre-wrap;text-align:right">${esc(r.delay_reason)}</td><td>${esc(r.employee_name||'—')}</td></tr>`;}).join('');
+  if(msg) msg.textContent=`عدد السجلات المعروضة: ${data.length} — التحديث المباشر مفعّل`;
+ }catch(e){console.error('loadLateOrders',e);body.innerHTML='<tr><td colspan="5">تعذر تحميل السجل. تأكد من إنشاء الجداول وتفعيل الصلاحيات.</td></tr>';if(msg)msg.textContent=e.message||'حدث خطأ أثناء تحميل السجل.';}
+}
+
+async function submitLateOrder(event){
+ event.preventDefault();
+ const btn=document.getElementById('lateOrderSubmitBtn');const msg=document.getElementById('lateOrdersMessage');
+ const orderNumber=document.getElementById('lateOrderNumber').value.trim();
+ const restaurantName=document.getElementById('lateRestaurantName').value.trim();
+ const selectedReason=document.getElementById('lateOrderReasonSelect').value;
+ const otherReason=document.getElementById('lateOrderReason').value.trim();
+ const delayReason=selectedReason==='__other__'?otherReason:selectedReason;
+ if(!orderNumber||!restaurantName||!delayReason){msg.textContent='يرجى إدخال رقم الطلب واسم المطعم واختيار السبب أو كتابة السبب الآخر.';return;}
+ if(!currentUser||!currentProfile){msg.textContent='يجب تسجيل الدخول أولاً.';return;}
+ btn.disabled=true;msg.textContent='جارٍ حفظ الطلب...';
+ try{
+  const duplicate=await supabaseClient.from('late_orders').select('id').eq('order_number',orderNumber).limit(1);
+  if(duplicate.error) throw duplicate.error;
+  if(duplicate.data?.length&&!confirm('يوجد سجل سابق بنفس رقم الطلب. هل تريد تسجيله مرة ثانية؟')){msg.textContent='تم إلغاء التسجيل لتجنب التكرار.';return;}
+  const row={order_number:orderNumber,restaurant_name:restaurantName,delay_reason:delayReason,employee_id:currentProfile.employee_id||null,employee_name:currentProfile.full_name||currentProfile.username||'موظف',created_by:currentUser.id};
+  const {data,error}=await supabaseClient.from('late_orders').insert(row).select('id,order_number,restaurant_name,delay_reason,employee_name,created_at').single();
+  if(error) throw error;
+  let sheetNotice='';
+  if(LATE_ORDERS_SHEETS_WEBHOOK){try{await fetch(LATE_ORDERS_SHEETS_WEBHOOK,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({...row,created_at:data.created_at})});sheetNotice=' تمت محاولة المزامنة مع Google Sheets.';}catch(sheetError){console.warn('Google Sheets sync failed',sheetError);sheetNotice=' حُفظ في النظام لكن تعذرت مزامنة Google Sheets.';}}
+  else sheetNotice=' السجل يتحدث مباشرة داخل النظام؛ ربط Google Sheets يحتاج إعداد رابط المزامنة.';
+  document.getElementById('lateOrderForm').reset();handleLateReasonChange();msg.textContent='تم تسجيل الطلب المتأخر بنجاح.'+sheetNotice;await loadLateOrders();
+ }catch(e){console.error('submitLateOrder',e);msg.textContent='لم يتم حفظ الطلب: '+(e.message||'تأكد من إعداد جدول late_orders وصلاحياته.');}
+ finally{btn.disabled=false;}
+}
 </script>
 
 </body>
