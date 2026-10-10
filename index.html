@@ -1366,6 +1366,7 @@ html[data-theme="dark"] .weekly-color-control label{color:#e5edf8 !important}
     <div class="actions" style="justify-content:flex-start;margin-top:10px">
      <button type="submit" class="btn-blue" id="lateOrderSubmitBtn">تسجيل الطلب المتأخر</button>
      <button type="button" class="btn-dark" onclick="loadLateOrders()">تحديث السجل</button>
+     <button type="button" class="btn-dark" id="clearLateOrdersBtn" onclick="clearLateOrdersSystemOnly()" style="display:none;background:#a93226">تصفير سجل النظام</button>
     </div>
    </form>
    <div id="lateOrdersMessage" class="muted" role="status" style="margin:10px 0"></div>
@@ -6628,6 +6629,31 @@ async function deactivateLateOrderReason(id){
  }catch(e){alert('تعذر تعطيل السبب: '+(e.message||''));}
 }
 
+function updateLateOrdersAdminControls(){
+ const btn=document.getElementById('clearLateOrdersBtn');
+ if(btn) btn.style.display=(typeof isManagement==='function'&&isManagement())?'inline-flex':'none';
+}
+
+async function clearLateOrdersSystemOnly(){
+ if(!(typeof isManagement==='function'&&isManagement())){alert('هذا الإجراء للمسؤول أو المدير فقط.');return;}
+ const ok=confirm('تأكيد تصفير سجل الطلبات المتأخرة داخل النظام؟\nسيتم حذف السجلات من قاعدة بيانات النظام لجميع المستخدمين، ولن يتم حذف أي شيء من Google Sheets. لا يمكن التراجع عن الحذف.');
+ if(!ok) return;
+ const btn=document.getElementById('clearLateOrdersBtn');
+ const msg=document.getElementById('lateOrdersMessage');
+ if(btn) btn.disabled=true;
+ if(msg) msg.textContent='جارٍ تصفير سجل النظام فقط...';
+ try{
+  const {error}=await supabaseClient.from('late_orders').delete().gte('id',1);
+  if(error) throw error;
+  await loadLateOrders();
+  if(msg) msg.textContent='تم تصفير سجل النظام. بيانات Google Sheets لم تتغير.';
+ }catch(e){
+  console.error('clearLateOrdersSystemOnly',e);
+  if(msg) msg.textContent='تعذر تصفير السجل. قد تحتاج إلى تشغيل تحديث SQL الخاص بصلاحية الحذف للمسؤول.';
+  alert('تعذر تصفير السجل: '+(e.message||'تحقق من صلاحيات Supabase.'));
+ }finally{if(btn) btn.disabled=false;}
+}
+
 function subscribeLateOrdersRealtime(){
  if(lateOrdersRealtimeChannel){supabaseClient.removeChannel(lateOrdersRealtimeChannel);}
  lateOrdersRealtimeChannel=supabaseClient.channel('late-orders-live-'+(currentUser?.id||'user'))
@@ -6637,6 +6663,7 @@ function subscribeLateOrdersRealtime(){
 }
 
 async function loadLateOrders(){
+ updateLateOrdersAdminControls();
  const body=document.getElementById('lateOrdersBody');
  const msg=document.getElementById('lateOrdersMessage');
  if(!body) return;
