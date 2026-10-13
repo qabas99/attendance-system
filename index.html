@@ -6833,6 +6833,20 @@ function renderLateOrders(useSearchResults=false){
  if(msg) msg.textContent=`السجلات المعروضة: ${filtered.length} من أصل ${lateOrdersCache.length}.`;
 }
 
+function fetchLateOrdersJsonp(url){
+ return new Promise((resolve,reject)=>{
+  const callbackName='__lateOrdersJsonp_'+Date.now()+'_'+Math.random().toString(36).slice(2);
+  const script=document.createElement('script');
+  let settled=false;
+  const cleanup=()=>{try{delete window[callbackName];}catch(_){window[callbackName]=undefined;} if(script.parentNode)script.parentNode.removeChild(script);};
+  const timeout=setTimeout(()=>{if(settled)return;settled=true;cleanup();reject(new Error('انتهت مهلة الاتصال بـ Google Sheets.'));},15000);
+  window[callbackName]=(data)=>{if(settled)return;settled=true;clearTimeout(timeout);cleanup();resolve(data);};
+  script.onerror=()=>{if(settled)return;settled=true;clearTimeout(timeout);cleanup();reject(new Error('تعذر تحميل رد Google Sheets. تحقق من رابط النشر وصلاحياته.'));};
+  script.src=url+(url.includes('?')?'&':'?')+'callback='+encodeURIComponent(callbackName)+'&t='+Date.now();
+  document.head.appendChild(script);
+ });
+}
+
 async function loadLateOrders(){
  updateLateOrdersAdminControls();
  const body=document.getElementById('lateOrdersBody');
@@ -6841,9 +6855,8 @@ async function loadLateOrders(){
  body.innerHTML='<tr><td colspan="5">جارٍ تحميل سجل الطلبات من Google Sheets...</td></tr>';
  try{
   if(!LATE_ORDERS_SHEETS_WEBHOOK) throw new Error('رابط Google Sheets غير مضبوط.');
-  const response=await fetch(LATE_ORDERS_SHEETS_WEBHOOK,{method:'GET',cache:'no-store'});
-  if(!response.ok) throw new Error('تعذر الاتصال بواجهة Google Sheets ('+response.status+').');
-  const result=await response.json();
+  // Apps Script لا يسمح دائماً بقراءة JSON عبر fetch من نطاق الموقع بسبب CORS؛ JSONP يتجاوز مشكلة القراءة.
+  const result=await fetchLateOrdersJsonp(LATE_ORDERS_SHEETS_WEBHOOK);
   if(!result || result.ok!==true || !Array.isArray(result.rows)){
    throw new Error('واجهة Google Sheets لا تُرجع السجلات بعد. حدّث doGet في Apps Script ليُرجع rows ثم أعد نشر التطبيق.');
   }
