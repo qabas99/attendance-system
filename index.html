@@ -1425,6 +1425,15 @@ html[data-theme="dark"] .weekly-color-control label{color:#e5edf8 !important}
     </div>
    </form>
    <div id="lateOrdersMessage" class="muted" role="status" style="margin:10px 0"></div>
+   <div class="toolbar admin-only" id="lateOrdersSearchToolbar" style="margin-top:12px;padding:12px;border:1px solid #bfdbfe;border-radius:12px;gap:8px">
+    <input id="lateOrderSearch" type="search" placeholder="رقم الطلب بالكامل" aria-label="رقم الطلب">
+    <input id="lateOrderFromDate" type="date" title="من تاريخ" aria-label="من تاريخ">
+    <input id="lateOrderToDate" type="date" title="إلى تاريخ" aria-label="إلى تاريخ">
+    <input id="lateOrderSearchDays" type="number" min="1" max="36500" placeholder="آخر كم يوم؟" title="عدد الأيام السابقة" aria-label="عدد الأيام">
+    <button type="button" class="btn-blue" onclick="searchLateOrders()">بحث</button>
+    <button type="button" class="btn-dark" onclick="resetLateOrderSearch()">مسح البحث</button>
+    <button type="button" class="btn-green" onclick="downloadLateOrders()">تنزيل سجل التأخيرات CSV</button>
+   </div>
    <div class="table-wrap" style="margin-top:12px">
     <table style="min-width:850px">
      <thead><tr><th>تاريخ التسجيل</th><th>رقم الطلب</th><th>اسم المطعم</th><th>سبب التأخير</th><th>الموظف المسجل</th></tr></thead>
@@ -6646,7 +6655,7 @@ document.addEventListener('DOMContentLoaded',()=>{
 /* ===== سجل الطلبات المتأخرة =====
    ضع رابط Web App الخاص بـ Google Apps Script في المتغير أدناه بعد إعداد الشيت.
 */
-const LATE_ORDERS_SHEETS_WEBHOOK = 'https://script.google.com/macros/s/AKfycbxnjEYscunewL0V5dA6PZoucLOuyFKSz49j66qhVf_HjUOyWw7Kt6vPslahQNCTwicTew/exec';
+const LATE_ORDERS_SHEETS_WEBHOOK = 'https://script.google.com/macros/s/AKfycbxMpba8qFvOqZ7yuDsVU8KK-aL1W46A9sBZ1dKUMROEWYMM2oFOcRIpFHZ_aYE87Y6pug/exec';
 let lateOrdersRealtimeChannel = null;
 let lateOrderReasonsCache = [];
 
@@ -6766,21 +6775,139 @@ function subscribeLateOrdersRealtime(){
   .subscribe();
 }
 
+let lateOrdersCache = [];
+let lateOrdersSearchResults = null;
+
+function getLateOrdersFilteredRows(){
+ const orderQuery=(document.getElementById('lateOrderSearch')?.value||'').trim().toLocaleLowerCase();
+ const fromDate=(document.getElementById('lateOrderFromDate')?.value||'').trim();
+ const toDate=(document.getElementById('lateOrderToDate')?.value||'').trim();
+ const daysRaw=(document.getElementById('lateOrderSearchDays')?.value||'').trim();
+ const days=daysRaw ? parseInt(daysRaw,10) : 0;
+ if(fromDate && toDate && fromDate>toDate){
+  showToast('تاريخ البداية يجب أن يكون قبل تاريخ النهاية أو مساويًا له');
+  return [];
+ }
+ const now=new Date();
+ const todayBaghdad=baghdadDateOnly(now);
+ const cutoff=days ? new Date(baghdadDayStartUtc(todayBaghdad)) : null;
+ if(cutoff) cutoff.setUTCDate(cutoff.getUTCDate()-days+1);
+ return lateOrdersCache.filter(r=>{
+  // مطابقة رقم الطلب بالكامل وليس جزءًا منه.
+  if(orderQuery && String(r.order_number||'').trim().toLocaleLowerCase()!==orderQuery) return false;
+  const rowDate=r.created_at?baghdadDateOnly(new Date(r.created_at)):'';
+  if(fromDate && (!rowDate || rowDate<fromDate)) return false;
+  if(toDate && (!rowDate || rowDate>toDate)) return false;
+  if(cutoff && (!r.created_at || new Date(r.created_at)<cutoff)) return false;
+  return true;
+ });
+}
+
+function searchLateOrders(){
+ if(!isAdmin()){showToast('البحث في سجل التأخيرات متاح للمسؤول فقط');return;}
+ lateOrdersSearchResults=getLateOrdersFilteredRows();
+ renderLateOrders(true);
+}
+
+function renderLateOrders(useSearchResults=false){
+ const toolbar=document.getElementById('lateOrdersSearchToolbar');
+ if(toolbar) toolbar.style.display=isAdmin()?'':'none';
+ const body=document.getElementById('lateOrdersBody');
+ const msg=document.getElementById('lateOrdersMessage');
+ if(!body) return;
+ const hasSearch=((document.getElementById('lateOrderSearch')?.value||'').trim() ||
+  (document.getElementById('lateOrderFromDate')?.value||'') ||
+  (document.getElementById('lateOrderToDate')?.value||'') ||
+  (document.getElementById('lateOrderSearchDays')?.value||'').trim());
+ const filtered=useSearchResults && lateOrdersSearchResults!==null
+  ? lateOrdersSearchResults
+  : (hasSearch ? getLateOrdersFilteredRows() : lateOrdersCache);
+ if(!filtered.length){
+  body.innerHTML='<tr><td colspan="5">لا توجد سجلات مطابقة لمعايير البحث.</td></tr>';
+ }else{
+  body.innerHTML=filtered.map(r=>{
+   const date=r.created_at?new Date(r.created_at).toLocaleString('ar-IQ'):'—';
+   return `<tr><td>${esc(date)}</td><td>${esc(r.order_number)}</td><td>${esc(r.restaurant_name)}</td><td style="white-space:pre-wrap;text-align:right">${esc(r.delay_reason)}</td><td>${esc(r.employee_name||'—')}</td></tr>`;
+  }).join('');
+ }
+ if(msg) msg.textContent=`السجلات المعروضة: ${filtered.length} من أصل ${lateOrdersCache.length}.`;
+}
+
 async function loadLateOrders(){
  updateLateOrdersAdminControls();
  const body=document.getElementById('lateOrdersBody');
  const msg=document.getElementById('lateOrdersMessage');
  if(!body) return;
- body.innerHTML='<tr><td colspan="5">جارٍ تحميل السجل...</td></tr>';
+ body.innerHTML='<tr><td colspan="5">جارٍ تحميل سجل الطلبات من Google Sheets...</td></tr>';
  try{
-  const {data,error}=await supabaseClient.from('late_orders')
-   .select('id,order_number,restaurant_name,delay_reason,employee_name,created_at')
-   .order('created_at',{ascending:false}).limit(500);
-  if(error) throw error;
-  if(!data || !data.length){body.innerHTML='<tr><td colspan="5">لا توجد طلبات متأخرة مسجلة حالياً.</td></tr>';if(msg)msg.textContent='';return;}
-  body.innerHTML=data.map(r=>{const date=r.created_at?new Date(r.created_at).toLocaleString('ar-IQ'):'—';return `<tr><td>${esc(date)}</td><td>${esc(r.order_number)}</td><td>${esc(r.restaurant_name)}</td><td style="white-space:pre-wrap;text-align:right">${esc(r.delay_reason)}</td><td>${esc(r.employee_name||'—')}</td></tr>`;}).join('');
-  if(msg) msg.textContent=`عدد السجلات المعروضة: ${data.length} — التحديث المباشر مفعّل`;
- }catch(e){console.error('loadLateOrders',e);body.innerHTML='<tr><td colspan="5">تعذر تحميل السجل. تأكد من إنشاء الجداول وتفعيل الصلاحيات.</td></tr>';if(msg)msg.textContent=e.message||'حدث خطأ أثناء تحميل السجل.';}
+  if(!LATE_ORDERS_SHEETS_WEBHOOK) throw new Error('رابط Google Sheets غير مضبوط.');
+  const response=await fetch(LATE_ORDERS_SHEETS_WEBHOOK,{method:'GET',cache:'no-store'});
+  if(!response.ok) throw new Error('تعذر الاتصال بواجهة Google Sheets ('+response.status+').');
+  const result=await response.json();
+  if(!result || result.ok!==true || !Array.isArray(result.rows)){
+   throw new Error('واجهة Google Sheets لا تُرجع السجلات بعد. حدّث doGet في Apps Script ليُرجع rows ثم أعد نشر التطبيق.');
+  }
+  lateOrdersSearchResults=null;
+  lateOrdersCache=result.rows.map((r,i)=>({
+   id:r.id??i,
+   order_number:String(r.order_number??r['رقم الطلب']??''),
+   restaurant_name:String(r.restaurant_name??r['اسم المطعم']??''),
+   delay_reason:String(r.delay_reason??r['سبب التأخير']??''),
+   employee_name:String(r.employee_name??r['اسم الموظف']??''),
+   created_at:r.created_at??r['وقت التسجيل']??null
+  })).sort((a,b)=>new Date(b.created_at||0)-new Date(a.created_at||0));
+  renderLateOrders();
+  if(msg) msg.textContent += ' — مصدر السجل: Google Sheets';
+ }catch(e){
+  console.error('loadLateOrders from Google Sheets',e);
+  // احتياطياً: إذا تعطل رابط Google Sheets، اعرض سجلات Supabase بدلاً من ترك الجدول فارغاً.
+  try{
+   const {data,error}=await supabaseClient.from('late_orders')
+    .select('id,order_number,restaurant_name,delay_reason,employee_name,created_at')
+    .order('created_at',{ascending:false});
+   if(error) throw error;
+   lateOrdersSearchResults=null;
+   lateOrdersCache=(data||[]).map(r=>({
+    id:r.id,
+    order_number:String(r.order_number||''),
+    restaurant_name:String(r.restaurant_name||''),
+    delay_reason:String(r.delay_reason||''),
+    employee_name:String(r.employee_name||''),
+    created_at:r.created_at||null
+   }));
+   renderLateOrders();
+   if(msg)msg.textContent='تعذر الاتصال بـ Google Sheets؛ يتم عرض سجلات النظام الاحتياطية. '+(e.message||'');
+  }catch(dbError){
+   console.error('loadLateOrders fallback',dbError);
+   body.innerHTML='<tr><td colspan="5">تعذر تحميل السجلات من Google Sheets ومن قاعدة بيانات النظام.</td></tr>';
+   if(msg)msg.textContent='فشل تحميل السجل من المصدرين. تحقق من نشر Apps Script وصلاحيات جدول late_orders.';
+  }
+ }
+}
+
+function resetLateOrderSearch(){
+ if(!isAdmin()){showToast('هذه الميزة للمسؤول فقط');return;}
+ ['lateOrderSearch','lateOrderFromDate','lateOrderToDate','lateOrderSearchDays'].forEach(id=>{
+  const el=document.getElementById(id); if(el) el.value='';
+ });
+ lateOrdersSearchResults=null;
+ renderLateOrders();
+}
+
+function downloadLateOrders(){
+ if(!isAdmin()){showToast('تنزيل سجل التأخيرات متاح للمسؤول فقط');return;}
+ const rows=getLateOrdersFilteredRows();
+ if(!rows.length){showToast('لا توجد سجلات لتنزيلها');return;}
+ const headers=['تاريخ التسجيل','رقم الطلب','اسم المطعم','سبب التأخير','الموظف المسجل'];
+ const csv=[headers,...rows.map(r=>[
+  r.created_at?new Date(r.created_at).toLocaleString('ar-IQ'):'',
+  r.order_number||'',r.restaurant_name||'',r.delay_reason||'',r.employee_name||''
+ ])].map(row=>row.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\r\n');
+ const blob=new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8;'});
+ const url=URL.createObjectURL(blob);
+ const a=document.createElement('a');a.href=url;
+ a.download='سجل_الطلبات_المتأخرة_'+new Date().toISOString().slice(0,10)+'.csv';
+ document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);
 }
 
 async function submitLateOrder(event){
@@ -6802,7 +6929,20 @@ async function submitLateOrder(event){
   const {data,error}=await supabaseClient.from('late_orders').insert(row).select('id,order_number,restaurant_name,delay_reason,employee_name,created_at').single();
   if(error) throw error;
   let sheetNotice='';
-  if(LATE_ORDERS_SHEETS_WEBHOOK){try{await fetch(LATE_ORDERS_SHEETS_WEBHOOK,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({...row,created_at:data.created_at})});sheetNotice=' تمت محاولة المزامنة مع Google Sheets.';}catch(sheetError){console.warn('Google Sheets sync failed',sheetError);sheetNotice=' حُفظ في النظام لكن تعذرت مزامنة Google Sheets.';}}
+  if(LATE_ORDERS_SHEETS_WEBHOOK){
+   try{
+    // Apps Script يستقبل JSON كنص عادي لتفادي طلبات preflight في المتصفح.
+    await fetch(LATE_ORDERS_SHEETS_WEBHOOK,{
+     method:'POST',mode:'no-cors',redirect:'follow',
+     headers:{'Content-Type':'text/plain;charset=utf-8'},
+     body:JSON.stringify({...row,created_at:data.created_at})
+    });
+    sheetNotice=' تم إرسال بيانات الطلب إلى Google Sheets. إذا لم تظهر بالشيت، حدّث نشر Apps Script بالكود المرفق.';
+   }catch(sheetError){
+    console.warn('Google Sheets sync failed',sheetError);
+    sheetNotice=' حُفظ الطلب في النظام، لكن تعذر إرسال نسخة إلى Google Sheets.';
+   }
+  }
   else sheetNotice=' السجل يتحدث مباشرة داخل النظام؛ ربط Google Sheets يحتاج إعداد رابط المزامنة.';
   document.getElementById('lateOrderForm').reset();handleLateReasonChange();msg.textContent='تم تسجيل الطلب المتأخر بنجاح.'+sheetNotice;await loadLateOrders();
  }catch(e){console.error('submitLateOrder',e);msg.textContent='لم يتم حفظ الطلب: '+(e.message||'تأكد من إعداد جدول late_orders وصلاحياته.');}
