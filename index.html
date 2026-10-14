@@ -2136,6 +2136,26 @@ function today(){
  return baghdadDateOnly();
 }
 
+// الشفت موحّد لكل الموظفين: 7 مساءً إلى 2 صباحاً، ويُعامل كشفت واحد حتى بعد منتصف الليل.
+// من 00:00 إلى 06:59 نعرض تقييم الشفت الذي بدأ بالأمس؛ ومن 07:00 نجهّز تاريخ شفت اليوم.
+function currentShiftEvaluationRange(){
+ const now=new Date();
+ const hour=Number(new Intl.DateTimeFormat('en-GB',{timeZone:BAGHDAD_TZ,hour:'2-digit',hourCycle:'h23'}).format(now));
+ const calendarDay=today();
+ const from=(hour<7)?dateShift(calendarDay,-1):calendarDay;
+ const to=dateShift(from,1);
+ return {from,to,startUtc:new Date(`${from}T19:00:00+03:00`).getTime(),endUtc:new Date(`${to}T02:00:00+03:00`).getTime()};
+}
+
+// النقاط الحية تخص وقت الشفت الفعلي فقط، وليس كل مخالفات اليوم التقويمي.
+function filterViolationsForShift(rows,range){
+ return (rows||[]).filter(v=>{
+  if(!v.created_at)return String(v.violation_date||'')>=range.from&&String(v.violation_date||'')<=range.to;
+  const created=Date.parse(v.created_at);
+  return Number.isFinite(created)&&created>=range.startUtc&&created<range.endUtc;
+ });
+}
+
 // العراق على +03:00؛ نستخدم حدوداً شاملة البداية وحصرية النهاية لتجنب أخطاء آخر ثانية.
 function baghdadDayStartUtc(dateString){
  return new Date(`${dateString}T00:00:00+03:00`).toISOString();
@@ -2578,9 +2598,9 @@ async function loadAllData(options={}){
  await Promise.all(jobs);
  try{
   await loadEvaluationPenaltySettings();
-  const day=today();
-  await syncAutomaticBreakViolations(day,day);
-  currentEvaluationViolations=await loadViolations(day,day);
+  const shiftRange=currentShiftEvaluationRange();
+  await syncAutomaticBreakViolations(shiftRange.from,shiftRange.to);
+  currentEvaluationViolations=filterViolationsForShift(await loadViolations(shiftRange.from,shiftRange.to),shiftRange);
  }catch(e){console.warn('Evaluation score refresh:',e);}
  populateEmployeeSelects(); renderTable(); updateStats(); renderPermissionRequests();
  if(document.getElementById('employeeEvaluationSection')){ fillEvaluationEmployees(); }
@@ -5698,7 +5718,7 @@ async function addEmployeeViolation(){
  if(points<=0)return showToast('أدخل نقاط الخصم');
  const {error}=await supabaseClient.from('employee_violations').insert({employee_id:employee.id,violation_type:type,points,violation_date:date,note,source:'manual',status:'active',created_by:currentUser?.id||null}).select().single();
  if(error){console.error('EMPLOYEE VIOLATION INSERT ERROR:',error);return showToast('فشل حفظ المخالفة في قاعدة البيانات: '+(error.message||error.details||error.hint||'خطأ غير معروف'));}
- await writeManagementLog('إضافة مخالفة',employee.id,employee.name,JSON.stringify({type,points,date,note}));document.getElementById('violationNote').value='';if(date===today())currentEvaluationViolations=await loadViolations(today(),today());renderTable();updateStats();showToast('تمت إضافة المخالفة');
+ await writeManagementLog('إضافة مخالفة',employee.id,employee.name,JSON.stringify({type,points,date,note}));document.getElementById('violationNote').value='';const liveRange=currentShiftEvaluationRange();if(date>=liveRange.from&&date<=liveRange.to)currentEvaluationViolations=filterViolationsForShift(await loadViolations(liveRange.from,liveRange.to),liveRange);renderTable();updateStats();showToast('تمت إضافة المخالفة');
  const from=document.getElementById('evaluationFrom').value||date,to=document.getElementById('evaluationTo').value||date,emp=document.getElementById('evaluationEmployee').value;await generateEmployeeEvaluation(from,to,emp);
 }
 
@@ -5706,7 +5726,7 @@ async function cancelEmployeeViolation(id){
  if(!isManagement()||!confirm('إلغاء هذه المخالفة؟ سيتم إرجاع نقاطها للتقييم.'))return;
  const {data:old,error:readError}=await supabaseClient.from('employee_violations').select('employee_id,violation_type,points,violation_date,note').eq('id',id).maybeSingle();if(readError||!old)return showToast('تعذر قراءة المخالفة');
  const {error}=await supabaseClient.from('employee_violations').update({status:'cancelled',cancelled_by:currentUser?.id||null,cancelled_at:new Date().toISOString(),cancel_reason:'إلغاء من الإدارة'}).eq('id',id);if(error){console.error(error);return showToast('تعذر إلغاء المخالفة');}
- if(String(old.violation_date)===today())currentEvaluationViolations=await loadViolations(today(),today());renderTable();updateStats();const employee=(allEmployeesList||[]).find(e=>Number(e.id)===Number(old.employee_id));await writeManagementLog('إلغاء مخالفة',old.employee_id,employee?.name||'',JSON.stringify({id,type:old.violation_type,points:old.points,date:old.violation_date}));showToast('تم إلغاء المخالفة وإرجاع نقاطها للتقييم');await generateEmployeeEvaluation();
+ const liveRange=currentShiftEvaluationRange();if(String(old.violation_date)>=liveRange.from&&String(old.violation_date)<=liveRange.to)currentEvaluationViolations=filterViolationsForShift(await loadViolations(liveRange.from,liveRange.to),liveRange);renderTable();updateStats();const employee=(allEmployeesList||[]).find(e=>Number(e.id)===Number(old.employee_id));await writeManagementLog('إلغاء مخالفة',old.employee_id,employee?.name||'',JSON.stringify({id,type:old.violation_type,points:old.points,date:old.violation_date}));showToast('تم إلغاء المخالفة وإرجاع نقاطها للتقييم');await generateEmployeeEvaluation();
 }
 async function deleteEmployeeViolation(id){return cancelEmployeeViolation(id);}
 
