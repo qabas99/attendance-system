@@ -1472,7 +1472,7 @@ html[data-theme="dark"] .weekly-color-control label{color:#e5edf8 !important}
    <div class="dashboard-metric">
     <div class="label">متوسط التقييم</div>
     <div class="value" id="dashAverageRating">0%</div>
-    <div class="sub">متوسط الالتزام للموظفين</div>
+    <div class="sub">متوسط التقييم للموظفين</div>
    </div>
   </div>
 
@@ -1490,7 +1490,7 @@ html[data-theme="dark"] .weekly-color-control label{color:#e5edf8 !important}
      <b id="dashWorkPercentChart">0%</b>
     </div>
     <div class="dashboard-chart-item">
-     <div class="dashboard-chart-label">الالتزام</div>
+     <div class="dashboard-chart-label">التقييم</div>
      <div class="dashboard-chart-track"><span id="dashCompliancePercentBar"></span></div>
      <b id="dashCompliancePercent">0%</b>
     </div>
@@ -1657,7 +1657,7 @@ html[data-theme="dark"] .weekly-color-control label{color:#e5edf8 !important}
       <th>الحضور</th>
       <th>الاستراحة</th>
       <th>Cooldown</th>
-      <th>الالتزام</th>
+      <th>التقييم</th>
       <th>الإجراءات</th>
      </tr>
     </thead>
@@ -1789,6 +1789,7 @@ html[data-theme="dark"] .weekly-color-control label{color:#e5edf8 !important}
     <label>تجاوز الاستراحة <input type="number" id="penaltyBreakOverage" min="0" max="100" value="3"></label>
     <label>غياب بدون إذن <input type="number" id="penaltyUnauthorizedAbsence" min="0" max="100" value="10"></label>
     <label>نسيان تسجيل الاستراحة <input type="number" id="penaltyBreakMissing" min="0" max="100" value="2"></label>
+     <label>تدخين قبل مرور ساعة <input type="number" id="penaltySmokingEarly" min="0" max="100" value="2"></label>
    </div>
    <div class="actions" style="margin-top:10px;justify-content:flex-start">
     <button class="btn-purple" onclick="saveEvaluationPenaltySettings()">💾 حفظ الخصومات</button>
@@ -1803,17 +1804,18 @@ html[data-theme="dark"] .weekly-color-control label{color:#e5edf8 !important}
     <option value="غياب بدون إذن">غياب بدون إذن</option>
     <option value="تأخير">تأخير</option>
     <option value="نسيان تسجيل الاستراحة">نسيان تسجيل الاستراحة</option>
+     <option value="تدخين قبل مرور ساعة">تدخين قبل مرور ساعة</option>
     <option value="أخرى">أخرى</option>
    </select>
    <input type="number" id="violationPoints" min="0" max="100" value="5" placeholder="نقاط الخصم">
    <input type="date" id="violationDate">
-   <input type="text" id="violationNote" placeholder="ملاحظة المخالفة">
+   <input type="text" id="violationNote" placeholder="سبب المخالفة بالتفصيل (اختياري)">
    <button class="btn-red" onclick="addEmployeeViolation()">➕ إضافة مخالفة</button>
   </div>
   <div id="employeeEvaluationArea" style="margin-top:18px"><p class="muted">حدد الفترة ثم اضغط استخراج التقييم.</p></div>
   <div class="table-wrap" style="margin-top:18px">
    <table>
-    <thead><tr><th>التاريخ</th><th>الموظف</th><th>المخالفة</th><th>الخصم</th><th>التفاصيل</th><th>المصدر</th><th class="management-only">الإجراء</th></tr></thead>
+    <thead><tr><th>التاريخ</th><th>الموظف</th><th>المخالفة</th><th>الخصم</th><th>سبب المخالفة بالتفصيل</th><th>المصدر والحالة</th><th class="management-only">الإجراء</th></tr></thead>
     <tbody id="violationsBody"><tr><td colspan="7">لا توجد مخالفات ضمن الفترة</td></tr></tbody>
    </table>
   </div>
@@ -1922,7 +1924,7 @@ html[data-theme="dark"] .weekly-color-control label{color:#e5edf8 !important}
 
  <div class="modal-box">
 
-  <h2>تعديل نسبة الالتزام</h2>
+  <h2>تعديل نسبة التقييم</h2>
 
   <p class="muted" id="complianceEmployeeName"></p>
 
@@ -2084,6 +2086,7 @@ let workSessionsList = [];
 const busyActions = new Set();
 
 let weeklyReportRows = [];
+let currentEvaluationViolations = [];
 
 let currentLang =
  localStorage.getItem('attendance_language') || 'ar';
@@ -2572,8 +2575,14 @@ async function loadAllData(options={}){
  ];
  if(currentUser) jobs.push(loadPermissionRequests());
  await Promise.all(jobs);
+ try{
+  await loadEvaluationPenaltySettings();
+  const day=today();
+  await syncAutomaticBreakViolations(day,day);
+  currentEvaluationViolations=await loadViolations(day,day);
+ }catch(e){console.warn('Evaluation score refresh:',e);}
  populateEmployeeSelects(); renderTable(); updateStats(); renderPermissionRequests();
- if(document.getElementById('employeeEvaluationSection')){ fillEvaluationEmployees(); loadEvaluationPenaltySettings(); }
+ if(document.getElementById('employeeEvaluationSection')){ fillEvaluationEmployees(); }
  if(isAdmin() && options.accounts) loadAccountProfiles();
 }
 
@@ -3271,12 +3280,11 @@ async function startBreak(
    }
 
    if(breakType==='smoking'){
-    const cooldown=getSmokingCooldown(employeeId);
-    if(cooldown!==null && cooldown>0){
-     showToast(`تبقى ${cooldown} دقيقة قبل استراحة التدخين التالية`);
-     return;
+     const cooldown=getSmokingCooldown(employeeId);
+     if(cooldown!==null && cooldown>0){
+      showToast(`تنبيه: لم تمر ساعة منذ نهاية التدخينة السابقة. سيُسجل خصم التدخين المبكر (${Number(evaluationPenalties['تدخين قبل مرور ساعة']??2)} نقطة).`);
+     }
     }
-   }
 
    if(breakType==='dinner'){
     const dinnerUsed=breaksList.some(
@@ -3346,8 +3354,10 @@ async function startBreak(
    return;
   }
 
+  // يسمح باستراحة التدخين أكثر من مرة في اليوم؛ قيد الاستخدام اليومي يخص الأنواع الأخرى فقط.
   if(
    breakType !== 'authorized' &&
+   breakType !== 'smoking' &&
    previous.some(
     b=>b.break_type===breakType
    )
@@ -3358,18 +3368,13 @@ async function startBreak(
    return;
   }
 
+  // التدخين قبل مرور ساعة تنبيه فقط؛ لا يمنع بدء الاستراحة.
   if(breakType==='smoking'){
-
-   const cooldown =
-    getSmokingCooldown(employeeId);
-
+   const cooldown=getSmokingCooldown(employeeId);
    if(cooldown!==null && cooldown>0){
-
     showToast(
-     `تبقى ${cooldown} دقيقة قبل استراحة التدخين التالية`
+     `تنبيه: لم تمر ساعة منذ نهاية التدخينة السابقة. الخصم المتوقع ${Number(evaluationPenalties['تدخين قبل مرور ساعة']??2)} نقطة.`
     );
-
-    return;
    }
   }
 
@@ -3696,46 +3701,12 @@ function getSmokingCooldown(employeeId){
 ========================================================= */
 
 function complianceScore(employee){
-
- if(
-  employee.compliance_override !== null &&
-  employee.compliance_override !== undefined &&
-  Number.isFinite(
-   Number(employee.compliance_override)
-  )
- ){
-
-  return Math.max(
-   0,
-   Math.min(
-    100,
-    Math.round(
-     Number(employee.compliance_override)
-    )
-   )
-  );
-
- }
-
- const totalOverage =
-  breaksList
-   .filter(
-    b =>
-     Number(b.employee_id)===
-     Number(employee.id)
-   )
-   .reduce(
-    (sum,b)=>
-     sum+Number(b.overage_minutes||0),
-    0
-   );
-
- return Math.max(
-  0,
-  Math.round(100-totalOverage)
- );
-
+ const penalty=(currentEvaluationViolations||[])
+  .filter(v=>Number(v.employee_id)===Number(employee.id) && String(v.status||'active').toLowerCase()!=='cancelled')
+  .reduce((sum,v)=>sum+Math.max(0,Number(v.points||0)),0);
+ return Math.max(0,Math.min(100,100-penalty));
 }
+
 
 
 function openComplianceModal(employeeId){
@@ -3743,7 +3714,7 @@ function openComplianceModal(employeeId){
  if(!isAdmin()){
 
   showToast(
-   'تعديل نسبة الالتزام متاح للـ Admin فقط'
+   'تعديل نسبة التقييم متاح للـ Admin فقط'
   );
 
   return;
@@ -3886,7 +3857,7 @@ async function saveCompliance(){
   console.error(error);
 
   showToast(
-   'تعذر حفظ نسبة الالتزام'
+   'تعذر حفظ نسبة التقييم'
   );
 
   return;
@@ -3894,10 +3865,10 @@ async function saveCompliance(){
  }
 
  await writeManagementLog(
-  'تعديل نسبة الالتزام',
+  'تعديل نسبة التقييم',
   employeeId,
   employee.name,
-  `تم تعديل نسبة الالتزام إلى ${Math.round(value)}%. السبب: ${note}`
+  `تم تعديل نسبة التقييم إلى ${Math.round(value)}%. السبب: ${note}`
  );
 
  await writeActivity(
@@ -3913,7 +3884,7 @@ async function saveCompliance(){
  await loadAllData();
 
  showToast(
-  'تم حفظ نسبة الالتزام'
+  'تم حفظ نسبة التقييم'
  );
 
 }
@@ -5542,13 +5513,11 @@ function sumWorkSessions(sessions,from,to){
 }
 
 
-function complianceScoreForPeriod(employee, breakRows, useOverride=true){
- const override=useOverride ? employee?.compliance_override : null;
- if(override!==null && override!==undefined && Number.isFinite(Number(override))){
-  return Math.max(0,Math.min(100,Math.round(Number(override))));
- }
- const totalOverage=(breakRows||[]).reduce((sum,b)=>sum+Number(b.overage_minutes||0),0);
- return Math.max(0,Math.min(100,Math.round(100-totalOverage)));
+function complianceScoreForPeriod(employee, breakRows, useOverride=true, violationRows=[]){
+ const penalty=(violationRows||[])
+  .filter(v=>Number(v.employee_id)===Number(employee.id) && String(v.status||'active').toLowerCase()!=='cancelled')
+  .reduce((sum,v)=>sum+Math.max(0,Number(v.points||0)),0);
+ return Math.max(0,Math.min(100,100-penalty));
 }
 
 function automaticWeeklyRating(compliance,overageMinutes){
@@ -5618,7 +5587,7 @@ async function loadWeeklyReviews(from,to){
 
 const DEFAULT_EVALUATION_PENALTIES = {
  'خروج بدون تبليغ':5, 'تجاوز الاستراحة':3, 'غياب بدون إذن':10,
- 'نسيان تسجيل الاستراحة':2, 'تأخير':1, 'أخرى':1
+ 'نسيان تسجيل الاستراحة':2, 'تأخير':1, 'تدخين قبل مرور ساعة':2, 'أخرى':1
 };
 let evaluationPenalties={...DEFAULT_EVALUATION_PENALTIES};
 
@@ -5634,14 +5603,14 @@ async function loadEvaluationPenaltySettings(){
   evaluationPenalties={...DEFAULT_EVALUATION_PENALTIES};
   (data||[]).forEach(r=>evaluationPenalties[r.violation_type]=Math.max(0,Number(r.points||0)));
  }catch(e){ evaluationPenalties={...DEFAULT_EVALUATION_PENALTIES}; }
- const map={'خروج بدون تبليغ':'penaltyUnnotifiedExit','تجاوز الاستراحة':'penaltyBreakOverage','غياب بدون إذن':'penaltyUnauthorizedAbsence','نسيان تسجيل الاستراحة':'penaltyBreakMissing'};
+ const map={'خروج بدون تبليغ':'penaltyUnnotifiedExit','تجاوز الاستراحة':'penaltyBreakOverage','غياب بدون إذن':'penaltyUnauthorizedAbsence','نسيان تسجيل الاستراحة':'penaltyBreakMissing','تدخين قبل مرور ساعة':'penaltySmokingEarly'};
  Object.entries(map).forEach(([type,id])=>{const el=document.getElementById(id);if(el)el.value=evaluationPenalties[type]??DEFAULT_EVALUATION_PENALTIES[type];});
  syncViolationPointInput();
 }
 
 async function saveEvaluationPenaltySettings(){
  if(!isManagement()) return showToast('ليس لديك صلاحية تعديل الخصومات');
- const map={'خروج بدون تبليغ':'penaltyUnnotifiedExit','تجاوز الاستراحة':'penaltyBreakOverage','غياب بدون إذن':'penaltyUnauthorizedAbsence','نسيان تسجيل الاستراحة':'penaltyBreakMissing'};
+ const map={'خروج بدون تبليغ':'penaltyUnnotifiedExit','تجاوز الاستراحة':'penaltyBreakOverage','غياب بدون إذن':'penaltyUnauthorizedAbsence','نسيان تسجيل الاستراحة':'penaltyBreakMissing','تدخين قبل مرور ساعة':'penaltySmokingEarly'};
  const rows=Object.entries(map).map(([violation_type,id])=>({violation_type,points:Math.max(0,Math.min(100,Math.round(Number(document.getElementById(id)?.value||0)))),updated_by:currentUser?.id||null,updated_at:new Date().toISOString()}));
  const {error}=await supabaseClient.from('evaluation_penalty_settings').upsert(rows,{onConflict:'violation_type'});
  if(error){console.error(error);return showToast('تعذر حفظ الخصومات — نفذ SQL الخاص بإعدادات التقييم أولاً');}
@@ -5682,9 +5651,57 @@ async function loadEvaluationPermissions(from,to,employeeId=''){
  if(employeeId)q=q.eq('employee_id',employeeId);
  const {data,error}=await q;if(error)throw error;return data||[];
 }
+function violationReasonText(v){
+ const type=String(v.violation_type||'').trim();
+ const note=String(v.note||'').trim();
+ // تحويل الملاحظات التقنية القديمة إلى سبب مفهوم، وإخفاء معرّفات الاستراحات.
+ const breakMatch=note.match(/break\\s*id\\s*[:=]\\s*(\\d+)/i);
+ const overMatch=note.match(/(?:تجاوز|over(?:time)?)[^|؛;]*?([0-9٠-٩]+)\\s*(دقيقة|دقائق|دقيقه|min(?:ute)?s?)/i);
+ const minuteWords=n=>n===1?'دقيقة واحدة':n===2?'دقيقتين':`${n} دقائق`;
+ if(/تجاوز الاستراحة|تجاوز وقت الاستراحة/i.test(type)){
+  if(overMatch){
+   const n=Number(String(overMatch[1]).replace(/[٠-٩]/g,d=>'٠١٢٣٤٥٦٧٨٩'.indexOf(d)));
+   if(Number.isFinite(n)&&n>0)return `تجاوز الموظف مدة الاستراحة المسموحة بمقدار ${minuteWords(n)}.`;
+  }
+  if(note && !breakMatch) return note;
+  return 'انتهت المدة المسموحة للاستراحة واستمر الموظف خارج العمل.';
+ }
+ if(/تدخين قبل مرور ساعة/.test(type)){
+  if(note && !breakMatch && !/break\\s*id/i.test(note))return note;
+  return 'بدأ الموظف استراحة تدخين قبل مرور ساعة كاملة على نهاية استراحة التدخين السابقة.';
+ }
+ if(note){
+  const cleaned=note.replace(/\\b(?:break\\s*id\\s*[:=]?\\s*\\d+|استراحة\\s*رقم\\s*\\d+)\\b/ig,'').replace(/[|؛;]+/g,' ').replace(/\\s+/g,' ').trim();
+  if(cleaned && !/^تجاوز\\s*:?\\s*\\d+\\s*(?:دقيقة|دقائق|min)/i.test(cleaned))return cleaned;
+ }
+ const reasons={
+  'غياب بدون إذن':'تم تسجيل غياب بدون إذن من الإدارة.',
+  'تأخير':'تم تسجيل حالة تأخير يدويًا من الإدارة.',
+  'خروج بدون تبليغ':'خرج الموظف دون إبلاغ الإدارة.',
+  'نسيان تسجيل الاستراحة':'لم يسجل الموظف الاستراحة في النظام.',
+  'أخرى':'لم تُضف تفاصيل إضافية لهذه المخالفة.'
+ };
+ return reasons[type]||'لم تُسجّل تفاصيل إضافية لسبب المخالفة.';
+}
 async function renderViolations(from,to,employeeId=''){
  const body=document.getElementById('violationsBody');if(!body)return[];
- try{const rows=await loadViolations(from,to,employeeId);if(!rows.length){body.innerHTML='<tr><td colspan="7">لا توجد مخالفات ضمن الفترة</td></tr>';return rows;}body.innerHTML=rows.map(v=>`<tr><td>${esc(v.violation_date||'')}</td><td>${esc((allEmployeesList.find(e=>Number(e.id)===Number(v.employee_id))||employeesList.find(e=>Number(e.id)===Number(v.employee_id))||{}).name||'—')}</td><td>${esc(v.violation_type||'—')}</td><td class="danger">-${Number(v.points||0)}</td><td>${esc(v.note||'')}</td><td>${String(v.source||'manual')==='automatic'?'تلقائية':'يدوية'}</td><td class="management-only">${isManagement()?`<button class="btn-red" onclick="cancelEmployeeViolation(${Number(v.id)})">إلغاء</button>`:''}</td></tr>`).join('');return rows;}catch(e){console.error(e);body.innerHTML='<tr><td colspan="7">تعذر تحميل المخالفات — تأكد من تنفيذ SQL الخاص بالمخالفات</td></tr>';return[];}
+ try{
+  const rows=await loadViolations(from,to,employeeId);
+  if(!rows.length){body.innerHTML='<tr><td colspan="7">لا توجد مخالفات ضمن الفترة</td></tr>';return rows;}
+  body.innerHTML=rows.map(v=>{
+   const reason=violationReasonText(v);
+   return `<tr>
+    <td>${esc(v.violation_date||'')}</td>
+    <td>${esc((allEmployeesList.find(e=>Number(e.id)===Number(v.employee_id))||employeesList.find(e=>Number(e.id)===Number(v.employee_id))||{}).name||'—')}</td>
+    <td><strong>${esc(v.violation_type||'—')}</strong></td>
+    <td class="danger">-${Number(v.points||0)} نقطة</td>
+    <td class="violation-reason-cell"><span class="reason-label">سبب المخالفة</span>${esc(reason)}</td>
+    <td>${String(v.source||'manual')==='automatic'?'تلقائية':'يدوية'}<br><small>${String(v.status||'active')==='cancelled'?'ملغاة':'فعّالة'}</small></td>
+    <td class="management-only">${isManagement()?`<button class="btn-red" onclick="cancelEmployeeViolation(${Number(v.id)})">إلغاء</button>`:''}</td>
+   </tr>`;
+  }).join('');
+  return rows;
+ }catch(e){console.error(e);body.innerHTML='<tr><td colspan="7">تعذر تحميل المخالفات — تأكد من تنفيذ SQL الخاص بالمخالفات</td></tr>';return[];}
 }
 
 async function addEmployeeViolation(){
@@ -5693,7 +5710,7 @@ async function addEmployeeViolation(){
  if(points<=0)return showToast('أدخل نقاط الخصم');
  const {error}=await supabaseClient.from('employee_violations').insert({employee_id:employee.id,violation_type:type,points,violation_date:date,note,source:'manual',status:'active',created_by:currentUser?.id||null}).select().single();
  if(error){console.error(error);return showToast('تعذر إضافة المخالفة');}
- await writeManagementLog('إضافة مخالفة',employee.id,employee.name,JSON.stringify({type,points,date,note}));document.getElementById('violationNote').value='';showToast('تمت إضافة المخالفة');
+ await writeManagementLog('إضافة مخالفة',employee.id,employee.name,JSON.stringify({type,points,date,note}));document.getElementById('violationNote').value='';if(date===today())currentEvaluationViolations=await loadViolations(today(),today());renderTable();updateStats();showToast('تمت إضافة المخالفة');
  const from=document.getElementById('evaluationFrom').value||date,to=document.getElementById('evaluationTo').value||date,emp=document.getElementById('evaluationEmployee').value;await generateEmployeeEvaluation(from,to,emp);
 }
 
@@ -5701,22 +5718,37 @@ async function cancelEmployeeViolation(id){
  if(!isManagement()||!confirm('إلغاء هذه المخالفة؟ سيتم إرجاع نقاطها للتقييم.'))return;
  const {data:old,error:readError}=await supabaseClient.from('employee_violations').select('employee_id,violation_type,points,violation_date,note').eq('id',id).maybeSingle();if(readError||!old)return showToast('تعذر قراءة المخالفة');
  const {error}=await supabaseClient.from('employee_violations').update({status:'cancelled',cancelled_by:currentUser?.id||null,cancelled_at:new Date().toISOString(),cancel_reason:'إلغاء من الإدارة'}).eq('id',id);if(error){console.error(error);return showToast('تعذر إلغاء المخالفة');}
- const employee=(allEmployeesList||[]).find(e=>Number(e.id)===Number(old.employee_id));await writeManagementLog('إلغاء مخالفة',old.employee_id,employee?.name||'',JSON.stringify({id,type:old.violation_type,points:old.points,date:old.violation_date}));showToast('تم إلغاء المخالفة وإرجاع نقاطها للتقييم');await generateEmployeeEvaluation();
+ if(String(old.violation_date)===today())currentEvaluationViolations=await loadViolations(today(),today());renderTable();updateStats();const employee=(allEmployeesList||[]).find(e=>Number(e.id)===Number(old.employee_id));await writeManagementLog('إلغاء مخالفة',old.employee_id,employee?.name||'',JSON.stringify({id,type:old.violation_type,points:old.points,date:old.violation_date}));showToast('تم إلغاء المخالفة وإرجاع نقاطها للتقييم');await generateEmployeeEvaluation();
 }
 async function deleteEmployeeViolation(id){return cancelEmployeeViolation(id);}
 
 async function syncAutomaticBreakViolations(from,to,employeeId=''){
- const employees=(isManagement()?allEmployeesList:employeesList)||[],current=await loadReportData(from,to),breaks=current.breaks||[],penalty=Number(evaluationPenalties['تجاوز الاستراحة']||3);
- for(const b of breaks){const over=Number(b.overage_minutes||0);if(over<=0)continue;if(employeeId&&Number(b.employee_id)!==Number(employeeId))continue;const emp=employees.find(e=>Number(e.id)===Number(b.employee_id));if(!emp)continue;const date=(b.start_time||from).slice(0,10),note=`تجاوز وقت الاستراحة ${over} دقيقة`;const {data:exists,error}=await supabaseClient.from('employee_violations').select('id').eq('employee_id',emp.id).eq('violation_type','تجاوز الاستراحة').eq('violation_date',date).eq('note',note).limit(1);if(error||exists?.length)continue;await supabaseClient.from('employee_violations').insert({employee_id:emp.id,violation_type:'تجاوز الاستراحة',points:penalty,violation_date:date,note,source:'automatic',status:'active',created_by:currentUser?.id||null});}
+ const employees=(isManagement()?allEmployeesList:employeesList)||[];
+ const current=await loadReportData(from,to),breaks=(current.breaks||[]).slice().sort((a,b)=>new Date(a.start_time)-new Date(b.start_time));
+ const overPenalty=Math.max(0,Number(evaluationPenalties['تجاوز الاستراحة']??3));
+ const smokePenalty=Math.max(0,Number(evaluationPenalties['تدخين قبل مرور ساعة']??2));
+ for(const b of breaks){
+  if(employeeId&&Number(b.employee_id)!==Number(employeeId))continue;
+  const emp=employees.find(e=>Number(e.id)===Number(b.employee_id));if(!emp)continue;
+  const date=(b.start_time||from).slice(0,10);
+  const over=Number(b.overage_minutes||0);
+  if(over>0){
+   const note=`تجاوز وقت الاستراحة ${over} دقيقة`;
+   const {data:exists,error}=await supabaseClient.from('employee_violations').select('id').eq('employee_id',emp.id).eq('violation_type','تجاوز الاستراحة').eq('violation_date',date).eq('note',note).limit(1);
+   if(!error&&!exists?.length){await supabaseClient.from('employee_violations').insert({employee_id:emp.id,violation_type:'تجاوز الاستراحة',points:overPenalty,violation_date:date,note,source:'automatic',status:'active',created_by:currentUser?.id||null});}
+  }
+
+ }
 }
+
 function evaluationRating(score){if(score>=95)return'ممتاز';if(score>=90)return'جيد جداً';if(score>=80)return'جيد';if(score>=70)return'مقبول';return'يحتاج تحسين';}
 
 async function generateEmployeeEvaluation(fromArg,toArg,empArg){
  const from=fromArg||document.getElementById('evaluationFrom').value,to=toArg||document.getElementById('evaluationTo').value,employeeId=empArg!==undefined?empArg:document.getElementById('evaluationEmployee').value;if(!from||!to)return showToast('حدد تاريخ البداية والنهاية');if(from>to)return showToast('تاريخ البداية يجب أن يكون قبل النهاية');
  try{
   await loadEvaluationPenaltySettings();await syncAutomaticBreakViolations(from,to,employeeId);const employees=(isManagement()?allEmployeesList:employeesList)||[],selected=employeeId?employees.filter(e=>String(e.id)===String(employeeId)):employees,current=await loadReportData(from,to),violations=await loadViolations(from,to,employeeId),permissions=await loadEvaluationPermissions(from,to,employeeId),days=reportPeriodDays(from,to),area=document.getElementById('employeeEvaluationArea');
-  const cards=selected.map(e=>{const v=violations.filter(x=>Number(x.employee_id)===Number(e.id)),attendance=current.attendance.filter(a=>Number(a.employee_id)===Number(e.id)),breaks=current.breaks.filter(b=>Number(b.employee_id)===Number(e.id)),perms=permissions.filter(p=>Number(p.employee_id)===Number(e.id)),penalty=v.reduce((s,x)=>s+Number(x.points||0),0),compliance=complianceScoreForPeriod(e,breaks),presentDays=new Set(attendance.filter(a=>a.check_in).map(a=>a.attendance_date)).size,absentDays=new Set(v.filter(x=>x.violation_type==='غياب بدون إذن').map(x=>x.violation_date)).size,breakOverages=v.filter(x=>x.violation_type==='تجاوز الاستراحة').length,unnotifiedExits=v.filter(x=>x.violation_type==='خروج بدون تبليغ').length,unauthorizedAbsences=v.filter(x=>x.violation_type==='غياب بدون إذن').length,lateness=v.filter(x=>x.violation_type==='تأخير').length,missingBreak=v.filter(x=>x.violation_type==='نسيان تسجيل الاستراحة').length,breakCount=breaks.length,overageMinutes=breaks.reduce((s,b)=>s+Number(b.overage_minutes||0),0),approvedPermissions=perms.filter(p=>['approved','موافق','مقبول'].includes(String(p.status||'').trim().toLowerCase())).length;return{e,penalty,compliance,v,perms,presentDays,absentDays,breakOverages,unnotifiedExits,unauthorizedAbsences,lateness,missingBreak,breakCount,overageMinutes,approvedPermissions,days};});
-  area.innerHTML=cards.length?cards.map(x=>`<div class="evaluation-row"><div class="evaluation-name"><span>👤 ${esc(x.e.name)}</span><span class="badge badge-blue">${esc(from)} → ${esc(to)}</span></div><div class="summary-box"><small>الالتزام</small><strong class="${x.compliance>=80?'success':x.compliance>=60?'warning':'danger'}">${x.compliance}%</strong></div><div class="summary-box"><small>⚠️ المخالفات</small><strong>${x.v.length}</strong></div><div class="summary-box"><small>⏱️ تجاوز الاستراحة</small><strong>${x.breakOverages}</strong><small>${x.overageMinutes} د</small></div><div class="summary-box"><small>🚪 خروج بدون تبليغ</small><strong>${x.unnotifiedExits}</strong></div><div class="summary-box"><small>❌ غياب بدون إذن</small><strong>${x.unauthorizedAbsences}</strong></div><div class="summary-box"><small>🕐 التأخير</small><strong>${x.lateness}</strong></div><div class="summary-box"><small>☕ الاستراحات</small><strong>${x.breakCount}</strong></div><div class="summary-box"><small>📋 الأذونات</small><strong>${x.perms.length}</strong><small>موافق: ${x.approvedPermissions}</small></div><div class="summary-box"><small>⭐ التقييم</small><strong class="${x.compliance>=80?'success':x.compliance>=60?'warning':'danger'}">${evaluationRating(x.compliance)}</strong></div><div class="summary-box"><small>📉 الخصم</small><strong class="danger">-${x.penalty}</strong></div></div>`).join(''):'<p class="muted">لا توجد بيانات للموظف المحدد.</p>';
+  const cards=selected.map(e=>{const v=violations.filter(x=>Number(x.employee_id)===Number(e.id)),attendance=current.attendance.filter(a=>Number(a.employee_id)===Number(e.id)),breaks=current.breaks.filter(b=>Number(b.employee_id)===Number(e.id)),perms=permissions.filter(p=>Number(p.employee_id)===Number(e.id)),penalty=v.reduce((s,x)=>s+Number(x.points||0),0),compliance=complianceScoreForPeriod(e,breaks,false,v),presentDays=new Set(attendance.filter(a=>a.check_in).map(a=>a.attendance_date)).size,absentDays=new Set(v.filter(x=>x.violation_type==='غياب بدون إذن').map(x=>x.violation_date)).size,breakOverages=v.filter(x=>x.violation_type==='تجاوز الاستراحة').length,unnotifiedExits=v.filter(x=>x.violation_type==='خروج بدون تبليغ').length,unauthorizedAbsences=v.filter(x=>x.violation_type==='غياب بدون إذن').length,lateness=v.filter(x=>x.violation_type==='تأخير').length,missingBreak=v.filter(x=>x.violation_type==='نسيان تسجيل الاستراحة').length,breakCount=breaks.length,overageMinutes=breaks.reduce((s,b)=>s+Number(b.overage_minutes||0),0),approvedPermissions=perms.filter(p=>['approved','موافق','مقبول'].includes(String(p.status||'').trim().toLowerCase())).length;return{e,penalty,compliance,v,perms,presentDays,absentDays,breakOverages,unnotifiedExits,unauthorizedAbsences,lateness,missingBreak,breakCount,overageMinutes,approvedPermissions,days};});
+  area.innerHTML=cards.length?cards.map(x=>`<div class="evaluation-row"><div class="evaluation-name"><span>👤 ${esc(x.e.name)}</span><span class="badge badge-blue">${esc(from)} → ${esc(to)}</span></div><div class="summary-box"><small>التقييم</small><strong class="${x.compliance>=80?'success':x.compliance>=60?'warning':'danger'}">${x.compliance}%</strong></div><div class="summary-box"><small>⚠️ المخالفات</small><strong>${x.v.length}</strong></div><div class="summary-box"><small>⏱️ تجاوز الاستراحة</small><strong>${x.breakOverages}</strong><small>${x.overageMinutes} د</small></div><div class="summary-box"><small>🚪 خروج بدون تبليغ</small><strong>${x.unnotifiedExits}</strong></div><div class="summary-box"><small>❌ غياب بدون إذن</small><strong>${x.unauthorizedAbsences}</strong></div><div class="summary-box"><small>🕐 التأخير</small><strong>${x.lateness}</strong></div><div class="summary-box"><small>☕ الاستراحات</small><strong>${x.breakCount}</strong></div><div class="summary-box"><small>📋 الأذونات</small><strong>${x.perms.length}</strong><small>موافق: ${x.approvedPermissions}</small></div><div class="summary-box"><small>⭐ التقييم</small><strong class="${x.compliance>=80?'success':x.compliance>=60?'warning':'danger'}">${evaluationRating(x.compliance)}</strong></div><div class="summary-box"><small>📉 الخصم</small><strong class="danger">-${x.penalty}</strong></div></div>`).join(''):'<p class="muted">لا توجد بيانات للموظف المحدد.</p>';
   await renderViolations(from,to,employeeId);
  }catch(e){console.error(e);showToast('تعذر استخراج التقييم: '+(e.message||''));}
 }
@@ -5751,10 +5783,15 @@ async function generateWeeklyReport(){
  const previousFrom=dateShift(previousTo,-(days-1));
 
  try{
-  const [current,previous,reviews]=await Promise.all([
+  await loadEvaluationPenaltySettings();
+  await syncAutomaticBreakViolations(from,to,employeeFilter||'');
+  await syncAutomaticBreakViolations(previousFrom,previousTo,employeeFilter||'');
+  const [current,previous,reviews,currentViolations,previousViolations]=await Promise.all([
    loadReportData(from,to),
    loadReportData(previousFrom,previousTo),
-   loadWeeklyReviews(from,to)
+   loadWeeklyReviews(from,to),
+   loadViolations(from,to,employeeFilter||''),
+   loadViolations(previousFrom,previousTo,employeeFilter||'')
   ]);
 
   weeklyReportRows=employees.map(employee=>{
@@ -5778,8 +5815,8 @@ async function generateWeeklyReport(){
    const previousBreakCount=prevBreaks.length;
    const previousOverageMinutes=prevBreaks.reduce((sum,b)=>sum+Number(b.overage_minutes||0),0);
 
-   const compliance=complianceScoreForPeriod(employee,empBreaks,false);
-   const previousCompliance=complianceScoreForPeriod(employee,prevBreaks,false);
+   const compliance=complianceScoreForPeriod(employee,empBreaks,false,currentViolations.filter(v=>Number(v.employee_id)===Number(employee.id)));
+   const previousCompliance=complianceScoreForPeriod(employee,prevBreaks,false,previousViolations.filter(v=>Number(v.employee_id)===Number(employee.id)));
    const automaticRating=automaticWeeklyRating(compliance,overageMinutes);
    const review=reviews.get(String(employee.id))||null;
 
@@ -5957,7 +5994,7 @@ function renderWeeklyReport(from,to,previousFrom,previousTo){
    <div class="summary-box"><small>إجمالي الاستراحات الفعلي</small><strong>${minutesToText(totalBreak)}</strong></div>
    <div class="summary-box"><small>عدد مرات البريك</small><strong>${totalBreakCount}</strong></div>
    <div class="summary-box"><small>تجاوز وقت البريك</small><strong class="${totalOverage>0?'danger':'success'}">${totalOverage} دقيقة</strong></div>
-   <div class="summary-box"><small>متوسط الالتزام</small><strong class="success">${averageCompliance}%</strong></div>
+   <div class="summary-box"><small>متوسط التقييم</small><strong class="success">${averageCompliance}%</strong></div>
   </div>
 
   <div style="margin-bottom:12px">
@@ -5981,7 +6018,7 @@ function renderWeeklyReport(from,to,previousFrom,previousTo){
       <th>إجمالي الاستراحات</th>
       <th>عدد مرات البريك</th>
       <th>تجاوز وقت البريك</th>
-      <th>نسبة الالتزام</th>
+      <th>التقييم</th>
       <th>التقييم التلقائي</th>
       <th>مقارنة بالأسبوع السابق</th>
       <th>التنبيه</th>
@@ -6025,7 +6062,7 @@ function renderWeeklyReport(from,to,previousFrom,previousTo){
          <div><b>التواجد:</b> ${formatDelta(row.workMinutes-row.previousWorkMinutes,' دقيقة')}</div>
          <div><b>الاستراحات:</b> ${formatDelta(row.breakMinutes-row.previousBreakMinutes,' دقيقة')}</div>
          <div><b>التجاوز:</b> ${formatDelta(row.overageMinutes-row.previousOverageMinutes,' دقيقة')}</div>
-         <div><b>الالتزام:</b> ${formatDelta(complianceDelta,' نقطة')}</div>
+         <div><b>التقييم:</b> ${formatDelta(complianceDelta,' نقطة')}</div>
         </td>
         <td>
          ${alert
@@ -6089,7 +6126,7 @@ function exportWeeklyCSV(){
   'إجمالي الاستراحات',
   'عدد مرات البريك',
   'مجموع تجاوز وقت البريك',
-  'نسبة الالتزام',
+  'نسبة التقييم',
   'التقييم الأسبوعي التلقائي',
   'التواجد مقارنة بالأسبوع السابق',
   'الاستراحات مقارنة بالأسبوع السابق',
@@ -6328,7 +6365,7 @@ const I18N = {
  'بواسطة':'By',
  'سجل النشاط':'Activity Log',
  'المدة':'Duration',
- 'تعديل نسبة الالتزام':'Edit Compliance',
+ 'تعديل نسبة التقييم':'Edit Compliance',
  'النسبة الجديدة':'New percentage',
  'سبب التعديل':'Reason for change',
  'اكتب سبب تعديل النسبة...':'Enter the reason for changing the percentage...',
@@ -6396,12 +6433,12 @@ const I18N = {
  'أنشئ التقرير أولاً':'Generate the report first',
  'تم تصدير التقرير':'Report exported',
  'المتصفح منع نافذة الطباعة':'The browser blocked the print window',
- 'تعديل نسبة الالتزام متاح للـ Admin فقط':'Compliance editing is available to Admin only',
+ 'تعديل نسبة التقييم متاح للـ Admin فقط':'Compliance editing is available to Admin only',
  'هذه العملية للـ Admin فقط':'This operation is for Admin only',
  'النسبة يجب أن تكون بين 0 و100':'Percentage must be between 0 and 100',
  'يجب كتابة سبب تعديل النسبة':'Please enter a reason for changing the percentage',
- 'تعذر حفظ نسبة الالتزام':'Unable to save compliance',
- 'تم حفظ نسبة الالتزام':'Compliance saved',
+ 'تعذر حفظ نسبة التقييم':'Unable to save compliance',
+ 'تم حفظ نسبة التقييم':'Compliance saved',
  'تعذر تعطيل الموظف':'Unable to disable employee',
  'تعطيل موظف':'Disable employee',
  'تم تعطيل الموظف':'Employee disabled',
@@ -6438,7 +6475,7 @@ const I18N = {
  'تعذر تحديث طلب الإذن':'Unable to update permission request',
  'الحساب معطل أو غير موجود':'Account is disabled or does not exist',
 
- 'عرض الكل':'Show All', 'لوحة التحكم فقط':'Dashboard Only', 'التقرير الأسبوعي فقط':'Weekly Report Only', 'عرض الشاشة':'Display View', 'لوحة التحكم والملخص اليومي':'Dashboard & Daily Summary', 'إجمالي ساعات العمل الفعلية اليوم':'Total actual work hours today', 'متوسط الالتزام للموظفين':'Average employee compliance', 'نسب لوحة التحكم':'Dashboard Percentages', 'وقت العمل':'Work Time', 'متوسط التقييم':'Average Rating', 'فترات الاستراحة':'Break Periods', 'إجمالي مدة الاستراحات اليوم':'Total break duration today', 'ملخص وقت العمل اليوم':'Today’s Work Summary', 'الحاضرون حالياً':'Currently Present', 'في الاستراحة':'On Break', 'غير المتواجدين':'Absent', 'متوسط وقت العمل للموظف':'Average Work Time per Employee', 'نسبة وقت العمل':'Work Time Percentage', 'مقابل 8 ساعات':'Against 8 Hours', 'ملخص الاستراحات':'Break Summary', 'عدد الاستراحات':'Break Count', 'متوسط الاستراحة':'Average Break', 'Cooldown':'Cooldown', 'إذن خروج':'Exit Permission', 'إذن تأخير':'Late Permission', 'إذن شخصي':'Personal Permission', 'إذن طبي':'Medical Permission', 'النوع':'Type', 'حذف طلبات اليوم':'Delete Today’s Requests', 'حذف كل الطلبات':'Delete All Requests', 'حذف سجلات اليوم':'Delete Today’s Logs', 'حذف كل السجلات':'Delete All Logs', 'إخفاء سجل النشاط':'Hide Activity Log', 'إظهار سجل النشاط':'Show Activity Log', 'نسبة الالتزام':'Compliance Percentage', 'التواجد مقارنة بالأسبوع السابق':'Attendance vs Previous Week', 'الاستراحات مقارنة بالأسبوع السابق':'Breaks vs Previous Week', 'التجاوز مقارنة بالأسبوع السابق':'Overage vs Previous Week', 'الالتزام مقارنة بالأسبوع السابق':'Compliance vs Previous Week', 'الترتيب':'Rank', 'إجمالي وقت العمل الفعلي':'Total Actual Work Time', 'مجموع تجاوز وقت البريك':'Total Break Overage', 'نقطة':'points', 'التقييم الأسبوعي':'Weekly Evaluation', 'تقييم أسبوعي':'Weekly Evaluation', 'فعال':'Active', 'معطل':'Disabled', 'تفعيل':'Enable', 'تفعيل موظف':'Enable Employee', 'الموافقة على إذن':'Approve Permission', 'رفض إذن':'Reject Permission', 'استراحة طارئة':'Emergency Break', 'استراحة طارئة لمدة 10 دقائق':'10-minute emergency break', 'تم تجاوز الحد':'Limit exceeded', 'لا توجد بيانات.':'No data.', 'اضغط «تحديث قائمة الحسابات» لعرض الحسابات.':'Click “Refresh Accounts” to view accounts.', 'تعديل الالتزام':'Edit Compliance', 'اكتب ملاحظة المدير لهذا الموظف خلال الفترة المحددة...':'Enter the manager note for this employee for the selected period...', 'العربية':'Arabic', 'English':'English', 'نظام الحضور والاستراحات — Username + Password':'Attendance & Breaks System — Username + Password',};
+ 'عرض الكل':'Show All', 'لوحة التحكم فقط':'Dashboard Only', 'التقرير الأسبوعي فقط':'Weekly Report Only', 'عرض الشاشة':'Display View', 'لوحة التحكم والملخص اليومي':'Dashboard & Daily Summary', 'إجمالي ساعات العمل الفعلية اليوم':'Total actual work hours today', 'متوسط التقييم للموظفين':'Average employee compliance', 'نسب لوحة التحكم':'Dashboard Percentages', 'وقت العمل':'Work Time', 'متوسط التقييم':'Average Rating', 'فترات الاستراحة':'Break Periods', 'إجمالي مدة الاستراحات اليوم':'Total break duration today', 'ملخص وقت العمل اليوم':'Today’s Work Summary', 'الحاضرون حالياً':'Currently Present', 'في الاستراحة':'On Break', 'غير المتواجدين':'Absent', 'متوسط وقت العمل للموظف':'Average Work Time per Employee', 'نسبة وقت العمل':'Work Time Percentage', 'مقابل 8 ساعات':'Against 8 Hours', 'ملخص الاستراحات':'Break Summary', 'عدد الاستراحات':'Break Count', 'متوسط الاستراحة':'Average Break', 'Cooldown':'Cooldown', 'إذن خروج':'Exit Permission', 'إذن تأخير':'Late Permission', 'إذن شخصي':'Personal Permission', 'إذن طبي':'Medical Permission', 'النوع':'Type', 'حذف طلبات اليوم':'Delete Today’s Requests', 'حذف كل الطلبات':'Delete All Requests', 'حذف سجلات اليوم':'Delete Today’s Logs', 'حذف كل السجلات':'Delete All Logs', 'إخفاء سجل النشاط':'Hide Activity Log', 'إظهار سجل النشاط':'Show Activity Log', 'نسبة التقييم':'Compliance Percentage', 'التواجد مقارنة بالأسبوع السابق':'Attendance vs Previous Week', 'الاستراحات مقارنة بالأسبوع السابق':'Breaks vs Previous Week', 'التجاوز مقارنة بالأسبوع السابق':'Overage vs Previous Week', 'الالتزام مقارنة بالأسبوع السابق':'Compliance vs Previous Week', 'الترتيب':'Rank', 'إجمالي وقت العمل الفعلي':'Total Actual Work Time', 'مجموع تجاوز وقت البريك':'Total Break Overage', 'نقطة':'points', 'التقييم الأسبوعي':'Weekly Evaluation', 'تقييم أسبوعي':'Weekly Evaluation', 'فعال':'Active', 'معطل':'Disabled', 'تفعيل':'Enable', 'تفعيل موظف':'Enable Employee', 'الموافقة على إذن':'Approve Permission', 'رفض إذن':'Reject Permission', 'استراحة طارئة':'Emergency Break', 'استراحة طارئة لمدة 10 دقائق':'10-minute emergency break', 'تم تجاوز الحد':'Limit exceeded', 'لا توجد بيانات.':'No data.', 'اضغط «تحديث قائمة الحسابات» لعرض الحسابات.':'Click “Refresh Accounts” to view accounts.', 'تعديل الالتزام':'Edit Compliance', 'اكتب ملاحظة المدير لهذا الموظف خلال الفترة المحددة...':'Enter the manager note for this employee for the selected period...', 'العربية':'Arabic', 'English':'English', 'نظام الحضور والاستراحات — Username + Password':'Attendance & Breaks System — Username + Password',};
 
 function t(value){
  if(value===null || value===undefined) return value;
@@ -6453,7 +6490,7 @@ function t(value){
   out=out.replace(/تبقى (\d+) دقيقة/g,'$1 min remaining before the next smoking break');
   out=out.replace(/تجاوز (\d+) دقيقة/g,'Exceeded by $1 min');
   out=out.replace(/انتهت الاستراحة — تجاوز (\d+) دقيقة/g,'Break ended — exceeded by $1 min');
-  out=out.replace(/تم تعديل نسبة الالتزام إلى (\d+)%\. السبب: (.*)/g,'Compliance changed to $1%. Reason: $2');
+  out=out.replace(/تم تعديل نسبة التقييم إلى (\d+)%\. السبب: (.*)/g,'Compliance changed to $1%. Reason: $2');
   out=out.replace(/النسبة (\d+)%. (.*)/g,'Percentage $1%. $2');
   out=out.replace(/هل تريد تعطيل الموظف (.*)؟/g,'Disable employee $1?');
   return out;
