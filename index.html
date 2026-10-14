@@ -1763,6 +1763,7 @@ html[data-theme="dark"] .weekly-color-control label{color:#e5edf8 !important}
 
  <!-- تقييم الموظفين والمخالفات -->
  <div class="card" id="employeeEvaluationSection">
+  <p class="muted" style="margin:8px 0">التقييم يبدأ من 100 لكل فترة محددة؛ اليومي يحسب مخالفات اليوم فقط، والأسبوعي/الشهري يحسب مخالفات الفترة المختارة فقط. المخالفات تبقى محفوظة ولا تُحذف عند بداية يوم جديد.</p>
   <h2>📊 تقييم الموظفين والمخالفات</h2>
   <div class="evaluation-controls">
    <div class="evaluation-date-field">
@@ -5654,27 +5655,14 @@ async function loadEvaluationPermissions(from,to,employeeId=''){
 function violationReasonText(v){
  const type=String(v.violation_type||'').trim();
  const note=String(v.note||'').trim();
- // تحويل الملاحظات التقنية القديمة إلى سبب مفهوم، وإخفاء معرّفات الاستراحات.
- const breakMatch=note.match(/break\\s*id\\s*[:=]\\s*(\\d+)/i);
- const overMatch=note.match(/(?:تجاوز|over(?:time)?)[^|؛;]*?([0-9٠-٩]+)\\s*(دقيقة|دقائق|دقيقه|min(?:ute)?s?)/i);
- const minuteWords=n=>n===1?'دقيقة واحدة':n===2?'دقيقتين':`${n} دقائق`;
- if(/تجاوز الاستراحة|تجاوز وقت الاستراحة/i.test(type)){
-  if(overMatch){
-   const n=Number(String(overMatch[1]).replace(/[٠-٩]/g,d=>'٠١٢٣٤٥٦٧٨٩'.indexOf(d)));
-   if(Number.isFinite(n)&&n>0)return `تجاوز الموظف مدة الاستراحة المسموحة بمقدار ${minuteWords(n)}.`;
-  }
-  if(note && !breakMatch) return note;
-  return 'انتهت المدة المسموحة للاستراحة واستمر الموظف خارج العمل.';
+ // لا نعرض رقم الاستراحة الداخلي كأنه سبب مفهوم للمستخدم.
+ if(type==='تدخين قبل مرور ساعة' && /break\s*id|استراحة\s*رقم/i.test(note)){
+  return 'بدأ الموظف استراحة تدخين قبل مرور ساعة على نهاية استراحة التدخين السابقة.';
  }
- if(/تدخين قبل مرور ساعة/.test(type)){
-  if(note && !breakMatch && !/break\\s*id/i.test(note))return note;
-  return 'بدأ الموظف استراحة تدخين قبل مرور ساعة كاملة على نهاية استراحة التدخين السابقة.';
- }
- if(note){
-  const cleaned=note.replace(/\\b(?:break\\s*id\\s*[:=]?\\s*\\d+|استراحة\\s*رقم\\s*\\d+)\\b/ig,'').replace(/[|؛;]+/g,' ').replace(/\\s+/g,' ').trim();
-  if(cleaned && !/^تجاوز\\s*:?\\s*\\d+\\s*(?:دقيقة|دقائق|min)/i.test(cleaned))return cleaned;
- }
+ if(note) return note;
  const reasons={
+  'تجاوز الاستراحة':'تجاوز الموظف المدة المسموحة للاستراحة.',
+  'تدخين قبل مرور ساعة':'بدأ الموظف استراحة تدخين قبل مرور ساعة على نهاية الاستراحة السابقة.',
   'غياب بدون إذن':'تم تسجيل غياب بدون إذن من الإدارة.',
   'تأخير':'تم تسجيل حالة تأخير يدويًا من الإدارة.',
   'خروج بدون تبليغ':'خرج الموظف دون إبلاغ الإدارة.',
@@ -5695,13 +5683,13 @@ async function renderViolations(from,to,employeeId=''){
     <td>${esc((allEmployeesList.find(e=>Number(e.id)===Number(v.employee_id))||employeesList.find(e=>Number(e.id)===Number(v.employee_id))||{}).name||'—')}</td>
     <td><strong>${esc(v.violation_type||'—')}</strong></td>
     <td class="danger">-${Number(v.points||0)} نقطة</td>
-    <td class="violation-reason-cell"><span class="reason-label">سبب المخالفة</span>${esc(reason)}</td>
+    <td style="min-width:240px;text-align:right;white-space:normal;line-height:1.6"><strong>سبب المخالفة:</strong> ${esc(reason)}</td>
     <td>${String(v.source||'manual')==='automatic'?'تلقائية':'يدوية'}<br><small>${String(v.status||'active')==='cancelled'?'ملغاة':'فعّالة'}</small></td>
     <td class="management-only">${isManagement()?`<button class="btn-red" onclick="cancelEmployeeViolation(${Number(v.id)})">إلغاء</button>`:''}</td>
    </tr>`;
   }).join('');
   return rows;
- }catch(e){console.error(e);body.innerHTML='<tr><td colspan="7">تعذر تحميل المخالفات — تأكد من تنفيذ SQL الخاص بالمخالفات</td></tr>';return[];}
+ }catch(e){console.error(e);body.innerHTML='<tr><td colspan="7">تعذر تحميل المخالفات: '+esc(e.message||'تحقق من صلاحيات قاعدة البيانات والجدول')+'</td></tr>';return[];}
 }
 
 async function addEmployeeViolation(){
@@ -5709,7 +5697,7 @@ async function addEmployeeViolation(){
  const type=document.getElementById('violationType').value,points=Math.max(0,Number(document.getElementById('violationPoints').value||evaluationPenalties[type]||0)),date=document.getElementById('violationDate').value||today(),note=document.getElementById('violationNote').value.trim();
  if(points<=0)return showToast('أدخل نقاط الخصم');
  const {error}=await supabaseClient.from('employee_violations').insert({employee_id:employee.id,violation_type:type,points,violation_date:date,note,source:'manual',status:'active',created_by:currentUser?.id||null}).select().single();
- if(error){console.error(error);return showToast('تعذر إضافة المخالفة');}
+ if(error){console.error('EMPLOYEE VIOLATION INSERT ERROR:',error);return showToast('فشل حفظ المخالفة في قاعدة البيانات: '+(error.message||error.details||error.hint||'خطأ غير معروف'));}
  await writeManagementLog('إضافة مخالفة',employee.id,employee.name,JSON.stringify({type,points,date,note}));document.getElementById('violationNote').value='';if(date===today())currentEvaluationViolations=await loadViolations(today(),today());renderTable();updateStats();showToast('تمت إضافة المخالفة');
  const from=document.getElementById('evaluationFrom').value||date,to=document.getElementById('evaluationTo').value||date,emp=document.getElementById('evaluationEmployee').value;await generateEmployeeEvaluation(from,to,emp);
 }
@@ -5724,23 +5712,81 @@ async function deleteEmployeeViolation(id){return cancelEmployeeViolation(id);}
 
 async function syncAutomaticBreakViolations(from,to,employeeId=''){
  const employees=(isManagement()?allEmployeesList:employeesList)||[];
- const current=await loadReportData(from,to),breaks=(current.breaks||[]).slice().sort((a,b)=>new Date(a.start_time)-new Date(b.start_time));
+ const current=await loadReportData(from,to);
+ const breaks=(current.breaks||[]).slice().sort((a,b)=>new Date(a.start_time)-new Date(b.start_time));
  const overPenalty=Math.max(0,Number(evaluationPenalties['تجاوز الاستراحة']??3));
  const smokePenalty=Math.max(0,Number(evaluationPenalties['تدخين قبل مرور ساعة']??2));
+
+ // جلب الاستراحات التي سبقت بداية الفترة بساعتين حتى لا نفوّت آخر تدخينة
+ // عند حساب شرط مرور ساعة في أول يوم من التقرير.
+ let priorBreaks=[];
+ try{
+  const {start:startISO,end:endISO}=baghdadRangeUtc(from,to);
+  const priorStart=new Date(Date.parse(startISO)-2*60*60*1000).toISOString();
+  const {data,error}=await supabaseClient.from('breaks').select('*')
+   .gte('start_time',priorStart).lt('start_time',endISO);
+  if(error)throw error;
+  priorBreaks=data||[];
+ }catch(e){
+  console.error('AUTO VIOLATION PRIOR BREAKS LOAD ERROR:',e);
+  // نكمل تجاوز المدة، لكن لا نخترع مخالفة تدخين إذا تعذّر فحص السجل السابق.
+ }
+ const allBreaks=[...new Map([...priorBreaks,...breaks].map(b=>[String(b.id??`${b.employee_id}:${b.start_time}`),b])).values()]
+  .sort((a,b)=>new Date(a.start_time)-new Date(b.start_time));
+
+ async function insertOnce({employee,type,points,date,note,identity}){
+  let checkQuery=supabaseClient.from('employee_violations').select('id')
+   .eq('employee_id',employee.id).eq('violation_type',type)
+   .eq('violation_date',date).eq('status','active');
+  checkQuery=identity?checkQuery.ilike('note',`%break:${identity}%`):checkQuery.eq('note',note);
+  const {data:exists,error:checkError}=await checkQuery.limit(1);
+  if(checkError){console.error('AUTO VIOLATION CHECK ERROR:',type,checkError);return;}
+  if(exists?.length)return;
+  const {error:insertError}=await supabaseClient.from('employee_violations').insert({
+   employee_id:employee.id,violation_type:type,points,violation_date:date,note,
+   source:'automatic',status:'active',created_by:currentUser?.id||null
+  });
+  if(insertError)console.error('AUTO VIOLATION INSERT ERROR:',type,insertError);
+ }
+
  for(const b of breaks){
   if(employeeId&&Number(b.employee_id)!==Number(employeeId))continue;
-  const emp=employees.find(e=>Number(e.id)===Number(b.employee_id));if(!emp)continue;
-  const date=(b.start_time||from).slice(0,10);
-  const over=Number(b.overage_minutes||0);
+  const emp=employees.find(e=>Number(e.id)===Number(b.employee_id));
+  if(!emp)continue;
+  const date=String(b.start_time||from).slice(0,10);
+  // تجاوز الاستراحة: استخدم القيمة المخزنة، مع احتسابها احتياطياً من المدة الفعلية
+  // إذا كان العمود فارغاً/صفراً في سجل قديم.
+  let over=Number(b.overage_minutes||0);
+  if(over<=0 && b.end_time && Number(b.allowed_minutes)>0){
+   const actual=Number(b.actual_minutes||((Date.parse(b.end_time)-Date.parse(b.start_time))/60000));
+   over=Math.max(0,Math.floor(actual-Number(b.allowed_minutes)));
+  }
   if(over>0){
-   const note=`تجاوز وقت الاستراحة ${over} دقيقة`;
-   const {data:exists,error}=await supabaseClient.from('employee_violations').select('id').eq('employee_id',emp.id).eq('violation_type','تجاوز الاستراحة').eq('violation_date',date).eq('note',note).limit(1);
-   if(!error&&!exists?.length){await supabaseClient.from('employee_violations').insert({employee_id:emp.id,violation_type:'تجاوز الاستراحة',points:overPenalty,violation_date:date,note,source:'automatic',status:'active',created_by:currentUser?.id||null});}
+   const breakIdentity=b.id!=null?String(b.id):`${b.start_time||date}-${b.end_time||''}`;
+   await insertOnce({employee:emp,type:'تجاوز الاستراحة',points:overPenalty,date,
+    note:`تجاوز وقت الاستراحة ${over} دقيقة (break:${breakIdentity})`,identity:breakIdentity});
   }
 
+  // مخالفة التدخين المبكر: تُسجّل إذا بدأت استراحة التدخين قبل مرور 60 دقيقة
+  // من نهاية استراحة التدخين السابقة للموظف نفسه.
+  if(b.break_type==='smoking' && b.start_time && smokePenalty>0){
+   const startMs=Date.parse(b.start_time);
+   const previous=allBreaks.filter(x=>Number(x.employee_id)===Number(b.employee_id)
+      && x.break_type==='smoking' && x.end_time
+      && Date.parse(x.end_time)<=startMs
+      && String(x.id)!==String(b.id))
+    .sort((a,c)=>Date.parse(c.end_time)-Date.parse(a.end_time))[0];
+   if(previous){
+    const elapsed=(startMs-Date.parse(previous.end_time))/60000;
+    if(elapsed>=0 && elapsed<60){
+     const breakIdentity=b.id!=null?String(b.id):`${b.start_time}-${b.end_time||''}`;
+     await insertOnce({employee:emp,type:'تدخين قبل مرور ساعة',points:smokePenalty,date,
+      note:`تدخين قبل مرور ساعة (break:${breakIdentity})`,identity:breakIdentity});
+    }
+   }
+  }
  }
 }
-
 function evaluationRating(score){if(score>=95)return'ممتاز';if(score>=90)return'جيد جداً';if(score>=80)return'جيد';if(score>=70)return'مقبول';return'يحتاج تحسين';}
 
 async function generateEmployeeEvaluation(fromArg,toArg,empArg){
