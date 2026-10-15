@@ -5,6 +5,116 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>نظام الحضور والاستراحات</title>
 
+<script>
+
+/* ===== التحكم بوضع العرض ===== */
+function setDisplayMode(mode){
+ const body=document.body;
+ body.classList.remove(
+  'display-dashboard-only',
+  'display-weekly-only'
+ );
+
+ if(mode==='dashboard'){
+  body.classList.add('display-dashboard-only');
+ }else if(mode==='weekly'){
+  body.classList.add('display-weekly-only');
+ }
+
+ localStorage.setItem('displayMode', mode);
+ updateDisplayModeButtons(mode);
+}
+
+function updateDisplayModeButtons(mode){
+ const map={
+  all:document.getElementById('modeAllBtn'),
+  dashboard:document.getElementById('modeDashboardBtn'),
+  weekly:document.getElementById('modeWeeklyBtn')
+ };
+
+ Object.values(map).forEach(b=>{
+  if(b) b.classList.remove('display-mode-active');
+ });
+
+ if(map[mode]) map[mode].classList.add('display-mode-active');
+}
+
+function restoreDisplayMode(){
+ const mode=localStorage.getItem('displayMode') || 'all';
+ setDisplayMode(mode);
+}
+
+/*
+ * تحديد الأقسام تلقائياً حسب العناوين الموجودة في نفس الكود.
+ * لا يتم نقل أي عنصر، فقط إضافة classes للقوالب الموجودة.
+ */
+function markDisplaySections(){
+ const cards=[...document.querySelectorAll('.card')];
+
+ cards.forEach(card=>{
+  const text=(card.innerText||'').trim();
+
+  if(
+   /التقرير الأسبوعي|Weekly Report/i.test(text)
+  ){
+   card.classList.add('weekly-report-card');
+   return;
+  }
+
+  if(
+   /لوحة التحكم|Dashboard|ملخص|الإحصائيات|الحضور المباشر|سجل الحضور والنشاط المباشر/i.test(text)
+  ){
+   card.classList.add('dashboard-section');
+   return;
+  }
+
+  // الأقسام الإدارية والتشغيلية تبقى مخفية في وضع العرض المخصص.
+  card.classList.add('non-dashboard-section','non-weekly-section');
+ });
+}
+
+function prepareDisplayModes(){
+ markDisplaySections();
+ const screenMode=new URLSearchParams(window.location.search).get('screen')==='1';
+ if(screenMode){
+  document.body.classList.add('dedicated-screen-mode');
+  setDisplayMode('dashboard');
+ }else{
+  restoreDisplayMode();
+ }
+}
+
+
+/* ===== الوضع الداكن / الفاتح ===== */
+function updateThemeButton(){
+ const btn=document.getElementById('themeToggleBtn');
+ if(!btn) return;
+ const light=document.documentElement.getAttribute('data-theme')==='light';
+ btn.innerHTML=light ? '🌙 الوضع الداكن' : '☀️ الوضع الفاتح';
+ btn.title=light ? 'التبديل إلى الوضع الداكن' : 'التبديل إلى الوضع الفاتح';
+}
+
+function applyTheme(theme){
+ const safeTheme=theme==='light' ? 'light' : 'dark';
+ document.documentElement.setAttribute('data-theme',safeTheme);
+ localStorage.setItem('attendance_theme',safeTheme);
+ updateThemeButton();
+}
+
+function toggleTheme(){
+ const current=document.documentElement.getAttribute('data-theme') || 'dark';
+ applyTheme(current==='light' ? 'dark' : 'light');
+}
+
+function initTheme(){
+ const saved=localStorage.getItem('attendance_theme') || 'dark';
+ applyTheme(saved);
+}
+
+initTheme();
+
+
+</script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
 <style>
@@ -26,8 +136,7 @@
 
 body{
  margin:0;
- background:
- radial-gradient(ellipse at 15% 0%,#172746 0%,#0b1120 55%);
+ background:#e5e7eb;
  color:var(--ink);
  font-family:Tahoma,Arial,sans-serif;
  min-height:100vh;
@@ -201,6 +310,19 @@ tbody tr:nth-child(even){background:#142137}
 tbody tr:hover{background:#1a2b45}
 tbody tr:last-child td{border-bottom:0}
 
+.employee-break-row.break-smoking{background:#4a2f05!important}
+.employee-break-row.break-dinner{background:#12355b!important}
+.employee-break-row.break-emergency{background:#541b1b!important}
+.employee-break-row.break-authorized{background:#374151!important}
+.employee-break-row td{transition:background .2s}
+.employee-photo{width:44px;height:44px;border-radius:50%;object-fit:cover;border:2px solid #475569;vertical-align:middle;margin-left:8px;background:#1e293b}
+.employee-photo-placeholder{display:inline-flex;width:44px;height:44px;border-radius:50%;align-items:center;justify-content:center;background:#1e293b;border:2px solid #475569;margin-left:8px;vertical-align:middle;font-size:20px}
+.work-timer{font-variant-numeric:tabular-nums;font-weight:bold;color:#60a5fa;direction:ltr;display:inline-block}
+.photo-actions{display:flex;gap:5px;flex-wrap:wrap;justify-content:center;margin-top:6px}
+.photo-actions button{font-size:10px;padding:5px 7px}
+.report-photo{width:38px;height:38px;border-radius:50%;object-fit:cover;vertical-align:middle}
+
+
 .actions{
  display:flex;
  flex-wrap:wrap;
@@ -303,6 +425,15 @@ tbody tr:last-child td{border-bottom:0}
  gap:10px;
 }
 
+.evaluation-controls{display:grid;grid-template-columns:1.1fr 1.1fr 1.35fr auto auto auto auto;gap:10px;align-items:end;}
+.evaluation-date-field{display:flex;flex-direction:column;gap:6px;min-width:0;}
+.evaluation-date-field label{font-size:12px;font-weight:700;}
+.evaluation-row{display:grid;grid-template-columns:minmax(150px,1.4fr) repeat(9,minmax(80px,1fr));gap:8px;align-items:stretch;padding:10px;border:1px solid #2b3d59;border-radius:12px;background:#111c2f;margin-bottom:10px;}
+.evaluation-row .evaluation-name{display:flex;flex-direction:column;justify-content:center;gap:5px;font-weight:700;}
+.evaluation-row .summary-box{margin:0;padding:10px 7px;min-width:0;}
+.evaluation-row .summary-box strong{font-size:18px;}
+.evaluation-row .summary-box small{font-size:11px;}
+
 .report-summary{
  display:grid;
  grid-template-columns:repeat(5,1fr);
@@ -343,6 +474,42 @@ tbody tr:last-child td{border-bottom:0}
  width:0%;
  transition:width .3s;
 }
+
+.report-alert{
+ display:inline-block;
+ padding:5px 9px;
+ border-radius:8px;
+ background:#450a0a;
+ color:#fca5a5;
+ border:1px solid #991b1b;
+ font-weight:bold;
+ font-size:12px;
+}
+
+.report-ok{
+ display:inline-block;
+ padding:5px 9px;
+ border-radius:8px;
+ background:#052e1b;
+ color:#34d399;
+ border:1px solid #065f46;
+ font-weight:bold;
+ font-size:12px;
+}
+
+.report-review{
+ max-width:260px;
+ text-align:right;
+ line-height:1.55;
+}
+
+.report-review small{
+ color:#94a3b8;
+}
+
+.report-change-up{color:#34d399;font-weight:bold}
+.report-change-down{color:#fb7185;font-weight:bold}
+.report-change-flat{color:#94a3b8;font-weight:bold}
 
 .modal{
  position:fixed;
@@ -455,6 +622,9 @@ tbody tr:last-child td{border-bottom:0}
  color:#34d399;
 }
 
+@media(max-width:1100px){.evaluation-controls{grid-template-columns:1fr 1fr 1fr 1fr;}.evaluation-row{grid-template-columns:1.3fr repeat(5,1fr);}}
+@media(max-width:800px){.evaluation-controls{grid-template-columns:1fr;}.evaluation-row{grid-template-columns:1fr 1fr;}.evaluation-row .evaluation-name{grid-column:1/-1;}}
+
 @media(max-width:1000px){
  .stats{grid-template-columns:repeat(2,1fr)}
  .report-summary{grid-template-columns:repeat(2,1fr)}
@@ -466,10 +636,745 @@ tbody tr:last-child td{border-bottom:0}
  .report-controls{grid-template-columns:1fr}
  .report-summary{grid-template-columns:1fr 1fr}
 }
+
+/* =========================================================
+   LIGHT GRAY DASHBOARD - NO LAYOUT/SEMANTIC COLOR CHANGES
+========================================================= */
+:root{
+ --bg:#e5e7eb;
+ --surface:#ffffff;
+ --surface2:#f8fafc;
+ --line:#cbd5e1;
+ --ink:#1e3a5f;
+ --muted:#64748b;
+}
+
+body{
+ background:#e5e7eb !important;
+ color:#1e3a5f !important;
+}
+
+header{
+ background:#ffffff !important;
+ color:#1e3a5f !important;
+ border:1px solid #2563eb !important;
+ box-shadow:0 8px 24px rgba(37,99,235,.08) !important;
+}
+header h1{color:#1e3a5f !important}
+#clock{color:#64748b !important}
+
+.card,
+.stats.card,
+.stat,
+.modal-box,
+.login-box,
+.userbar-inner{
+ background:#ffffff !important;
+ color:#1e3a5f !important;
+ border-color:#2563eb !important;
+ box-shadow:0 8px 22px rgba(37,99,235,.07) !important;
+}
+
+h2{color:#1e3a5f !important}
+.muted{color:#64748b !important}
+
+input,button,select,textarea{
+ background:#ffffff !important;
+ color:#1e3a5f !important;
+ border-color:#94a3b8 !important;
+}
+input::placeholder,textarea::placeholder{color:#94a3b8 !important}
+input:focus,select:focus,textarea:focus{
+ border-color:#2563eb !important;
+ box-shadow:0 0 0 3px rgba(37,99,235,.12) !important;
+}
+
+/* الأزرق فقط يصبح أبيض بإطار أزرق؛ ألوان الاستراحات تبقى كما هي */
+button.btn-blue,
+.btn-blue{
+ background:#ffffff !important;
+ color:#2563eb !important;
+ border:1px solid #2563eb !important;
+}
+button.btn-blue:hover:not(:disabled){background:#eff6ff !important}
+
+/* إبقاء الألوان الدلالية الأصلية */
+.btn-green{background:#059669 !important;color:#fff !important}
+.btn-orange{background:#d97706 !important;color:#fff !important}
+.btn-red{background:#dc2626 !important;color:#fff !important}
+.btn-purple{background:#7c3aed !important;color:#fff !important}
+.btn-dark{background:#334155 !important;color:#fff !important}
+
+.table-wrap{border-color:#bfdbfe !important;background:#fff !important}
+th{
+ background:#ffffff !important;
+ color:#1e3a5f !important;
+ border-bottom-color:#bfdbfe !important;
+}
+td{
+ background:#ffffff !important;
+ color:#334155 !important;
+ border-bottom-color:#e2e8f0 !important;
+}
+tbody tr:nth-child(even) td{background:#f8fafc !important}
+tbody tr:hover td{background:#eff6ff !important}
+
+/* ألوان الموظف حسب نوع الاستراحة - أقوى من تنسيق صفوف الجدول */
+tbody tr.employee-break-row.break-smoking td,
+tbody tr.employee-break-row.break-smoking:hover td{background:#4a2f05 !important;color:#ffffff !important}
+tbody tr.employee-break-row.break-dinner td,
+tbody tr.employee-break-row.break-dinner:hover td{background:#12355b !important;color:#ffffff !important}
+tbody tr.employee-break-row.break-emergency td,
+tbody tr.employee-break-row.break-emergency:hover td{background:#541b1b !important;color:#ffffff !important}
+tbody tr.employee-break-row.break-authorized td,
+tbody tr.employee-break-row.break-authorized:hover td{background:#374151 !important;color:#ffffff !important}
+/* تلوين صف الموظف بالكامل أثناء الاستراحة حسب نوعها */
+table tbody tr.employee-break-row{box-shadow:inset 5px 0 0 rgba(255,255,255,.28)}
+table tbody tr.employee-break-row td{background-color:inherit; transition:background-color .2s ease,color .2s ease}
+html[data-theme="light"] table tbody tr.employee-break-row.break-smoking td{background:#fef3c7 !important;color:#78350f !important}
+html[data-theme="light"] table tbody tr.employee-break-row.break-dinner td{background:#dbeafe !important;color:#1e3a8a !important}
+html[data-theme="light"] table tbody tr.employee-break-row.break-emergency td{background:#fee2e2 !important;color:#7f1d1d !important}
+html[data-theme="light"] table tbody tr.employee-break-row.break-authorized td{background:#e5e7eb !important;color:#1f2937 !important}
+html[data-theme="dark"] table tbody tr.employee-break-row.break-smoking td{background:#4a2f05 !important;color:#fff !important}
+html[data-theme="dark"] table tbody tr.employee-break-row.break-dinner td{background:#12355b !important;color:#fff !important}
+html[data-theme="dark"] table tbody tr.employee-break-row.break-emergency td{background:#541b1b !important;color:#fff !important}
+html[data-theme="dark"] table tbody tr.employee-break-row.break-authorized td{background:#374151 !important;color:#fff !important}
+
+.stat span{color:#64748b !important}
+.stat b{color:#1e3a5f !important}
+
+#toast{background:#334155 !important;color:#fff !important}
+.login-screen{background:#e5e7eb !important}
+
+/* Dashboard */
+.dashboard-display{
+ background:#fff;
+ border:2px solid #2563eb;
+ border-radius:18px;
+ padding:18px;
+ margin-bottom:18px;
+ box-shadow:0 10px 28px rgba(37,99,235,.08);
+}
+.dashboard-title{
+ display:flex;
+ align-items:center;
+ justify-content:space-between;
+ gap:12px;
+ margin-bottom:14px;
+ color:#1e3a5f;
+}
+.dashboard-title h2{margin:0 !important}
+.dashboard-badge{
+ border:1px solid #2563eb;
+ background:#eff6ff;
+ color:#2563eb;
+ border-radius:999px;
+ padding:6px 12px;
+ font-size:12px;
+ font-weight:bold;
+}
+.dashboard-grid{
+ display:grid;
+ grid-template-columns:repeat(4,1fr);
+ gap:12px;
+}
+.dashboard-metric{
+ background:#fff;
+ border:1px solid #bfdbfe;
+ border-radius:14px;
+ padding:16px;
+ min-height:104px;
+ display:flex;
+ flex-direction:column;
+ justify-content:center;
+}
+.dashboard-metric .label{
+ color:#64748b;
+ font-size:13px;
+ margin-bottom:7px;
+}
+.dashboard-metric .value{
+ color:#1e3a5f;
+ font-size:28px;
+ font-weight:800;
+ font-variant-numeric:tabular-nums;
+}
+.dashboard-metric .sub{
+ color:#94a3b8;
+ font-size:11px;
+ margin-top:5px;
+}
+.dashboard-summary{
+ margin-top:12px;
+ display:grid;
+ grid-template-columns:2fr 1fr 1fr;
+ gap:12px;
+}
+.dashboard-summary-box{
+ background:#f8fafc;
+ border:1px solid #bfdbfe;
+ border-radius:14px;
+ padding:16px;
+}
+.dashboard-summary-box h3{
+ margin:0 0 10px;
+ color:#1e3a5f;
+ font-size:15px;
+}
+.dashboard-progress{
+ height:10px;
+ border-radius:999px;
+ background:#e2e8f0;
+ overflow:hidden;
+}
+.dashboard-progress span{
+ display:block;
+ height:100%;
+ width:0;
+ background:#2563eb;
+ border-radius:999px;
+ transition:width .3s ease;
+}
+.dashboard-mini{
+ display:flex;
+ justify-content:space-between;
+ gap:10px;
+ padding:7px 0;
+ border-bottom:1px solid #e2e8f0;
+}
+.dashboard-mini:last-child{border-bottom:0}
+.dashboard-mini b{color:#1e3a5f}
+.dashboard-mini span{color:#64748b}
+.dashboard-chart-box{
+ background:#ffffff;
+ border:1px solid #bfdbfe;
+ border-radius:14px;
+ padding:16px;
+ margin-top:12px;
+}
+.dashboard-chart-box h3{
+ margin:0 0 14px;
+ color:#1e3a5f;
+ font-size:15px;
+}
+.dashboard-chart-grid{
+ display:grid;
+ grid-template-columns:repeat(4,1fr);
+ gap:14px;
+}
+.dashboard-chart-item{
+ background:#f8fafc;
+ border:1px solid #dbeafe;
+ border-radius:12px;
+ padding:12px;
+}
+.dashboard-chart-label{
+ color:#64748b;
+ font-size:12px;
+ font-weight:bold;
+ margin-bottom:8px;
+}
+.dashboard-chart-track{
+ height:16px;
+ background:#e2e8f0;
+ border-radius:999px;
+ overflow:hidden;
+}
+.dashboard-chart-track span{
+ display:block;
+ width:0;
+ height:100%;
+ background:#2563eb;
+ border-radius:999px;
+ transition:width .45s ease;
+}
+.dashboard-chart-item b{
+ display:block;
+ margin-top:7px;
+ color:#1e3a5f;
+ font-size:18px;
+}
+#dashboardEmployeeStatusSection{width:100%;box-sizing:border-box;margin-top:16px;padding:20px;background:linear-gradient(145deg,#061a31,#082747);border:1px solid #164875;border-radius:16px;color:#f1f7ff;overflow:hidden}
+#dashboardEmployeeStatusSection h3{color:#f1f7ff;font-size:clamp(20px,2vw,30px);margin:0 0 14px}
+#dashboardEmployeeStatusSection .table-wrap{max-height:75vh;overflow:auto;width:100%}
+#dashboardEmployeeStatusSection table{width:100%;min-width:900px;border-collapse:separate;border-spacing:0 4px;table-layout:auto}
+#dashboardEmployeeStatusSection th,#dashboardEmployeeStatusSection td{padding:14px 12px;text-align:center;font-size:clamp(13px,1.15vw,18px)}
+#dashboardEmployeeStatusSection thead th{background:#0b3156;color:#eaf4ff;position:sticky;top:0;z-index:2}
+#dashboardEmployeeStatusSection tbody tr.status-row-present{background:rgba(0,150,105,.28)}
+#dashboardEmployeeStatusSection tbody tr.status-row-break{background:rgba(210,126,0,.30)}
+#dashboardEmployeeStatusSection tbody tr.status-row-absent{background:rgba(200,30,55,.42)}
+#dashboardEmployeeStatusSection tbody td{border-top:1px solid rgba(120,170,220,.18);border-bottom:1px solid rgba(120,170,220,.18)}
+.dashboard-employee-photo{width:46px;height:46px;border-radius:50%;object-fit:cover;display:inline-flex;align-items:center;justify-content:center;background:#164875;color:#fff;border:2px solid #8ebbe8;font-size:24px}
+#dashboardEmployeeStatusSection .muted{color:#bdd0e5!important}
+
+/* تلوين كل خلايا صف الموظف في جدول حالة الموظفين بلوحة التحكم، لكل المستخدمين */
+#dashboardEmployeeStatusSection table tbody tr.status-row-break.break-smoking > td,
+#dashboardEmployeeStatusSection table tbody tr.status-row-break.break-smoking:hover > td{background:#4a2f05!important;color:#fff!important}
+#dashboardEmployeeStatusSection table tbody tr.status-row-break.break-dinner > td,
+#dashboardEmployeeStatusSection table tbody tr.status-row-break.break-dinner:hover > td{background:#12355b!important;color:#fff!important}
+#dashboardEmployeeStatusSection table tbody tr.status-row-break.break-emergency > td,
+#dashboardEmployeeStatusSection table tbody tr.status-row-break.break-emergency:hover > td{background:#541b1b!important;color:#fff!important}
+#dashboardEmployeeStatusSection table tbody tr.status-row-break.break-authorized > td,
+#dashboardEmployeeStatusSection table tbody tr.status-row-break.break-authorized:hover > td{background:#374151!important;color:#fff!important}
+html[data-theme="light"] #dashboardEmployeeStatusSection table tbody tr.status-row-break.break-smoking > td{background:#fef3c7!important;color:#78350f!important}
+html[data-theme="light"] #dashboardEmployeeStatusSection table tbody tr.status-row-break.break-dinner > td{background:#dbeafe!important;color:#1e3a8a!important}
+html[data-theme="light"] #dashboardEmployeeStatusSection table tbody tr.status-row-break.break-emergency > td{background:#fee2e2!important;color:#7f1d1d!important}
+html[data-theme="light"] #dashboardEmployeeStatusSection table tbody tr.status-row-break.break-authorized > td{background:#e5e7eb!important;color:#1f2937!important}
+#dashboardEmployeeStatusSection table tbody tr.status-row-break > td{transition:background-color .2s ease,color .2s ease}
+
+/* Full-width employee panel, scaled slightly smaller to fit the screen */
+.dashboard-summary{grid-template-columns:repeat(3,minmax(0,1fr))!important;align-items:stretch;min-width:0}
+#dashboardEmployeeStatusSection{grid-column:1 / -1!important;width:100%!important;max-width:100%!important;min-width:0!important;justify-self:stretch!important;margin-top:12px!important;padding:clamp(10px,1.2vw,18px)!important;box-sizing:border-box!important}
+#dashboardEmployeeStatusSection h3{font-size:clamp(18px,1.6vw,25px)!important;margin-bottom:8px!important}
+#dashboardEmployeeStatusSection .muted{font-size:clamp(11px,.85vw,13px)!important}
+#dashboardEmployeeStatusSection .table-wrap{width:100%!important;max-width:100%!important;max-height:68vh!important;overflow-x:auto!important;overflow-y:auto!important;box-sizing:border-box!important}
+#dashboardEmployeeStatusSection table{width:100%!important;min-width:0!important;table-layout:fixed!important;border-collapse:separate;border-spacing:0 3px!important}
+#dashboardEmployeeStatusSection th,#dashboardEmployeeStatusSection td{font-size:clamp(11px,.92vw,15px)!important;padding:clamp(6px,.65vw,10px)!important;overflow-wrap:anywhere;word-break:normal}
+#dashboardEmployeeStatusSection th:nth-child(1),#dashboardEmployeeStatusSection td:nth-child(1){width:4%}
+#dashboardEmployeeStatusSection th:nth-child(2),#dashboardEmployeeStatusSection td:nth-child(2){width:8%}
+#dashboardEmployeeStatusSection th:nth-child(3),#dashboardEmployeeStatusSection td:nth-child(3){width:17%}
+#dashboardEmployeeStatusSection th:nth-child(4),#dashboardEmployeeStatusSection td:nth-child(4){width:13%}
+#dashboardEmployeeStatusSection th:nth-child(5),#dashboardEmployeeStatusSection td:nth-child(5){width:12%}
+#dashboardEmployeeStatusSection th:nth-child(6),#dashboardEmployeeStatusSection td:nth-child(6){width:13%}
+#dashboardEmployeeStatusSection th:nth-child(7),#dashboardEmployeeStatusSection td:nth-child(7){width:13%}
+#dashboardEmployeeStatusSection th:nth-child(8),#dashboardEmployeeStatusSection td:nth-child(8){width:20%}
+#dashboardEmployeeStatusSection tbody tr{height:48px}
+#dashboardEmployeeStatusSection .dashboard-employee-photo{width:34px!important;height:34px!important;font-size:18px!important}
+#dashboardEmployeeStatusSection .dashboard-status-pill{padding:4px 7px!important;font-size:clamp(10px,.85vw,13px)!important;white-space:normal!important}
+@media(max-width:900px){
+ .dashboard-summary{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+ #dashboardEmployeeStatusSection{grid-column:1 / -1!important}
+ #dashboardEmployeeStatusSection table{min-width:760px!important;table-layout:auto!important}
+ #dashboardEmployeeStatusSection th,#dashboardEmployeeStatusSection td{font-size:12px!important;padding:7px!important}
+}
+@media(max-width:560px){
+ .dashboard-summary{grid-template-columns:minmax(0,1fr)!important}
+ #dashboardEmployeeStatusSection{padding:9px!important}
+ #dashboardEmployeeStatusSection table{min-width:720px!important}
+}
+.dashboard-status-pill{display:inline-block;border-radius:999px;padding:6px 12px;font-weight:800;white-space:nowrap}
+.dashboard-status-present{background:#dcfce7;color:#166534;border:1px solid #86efac}
+.dashboard-status-break{background:#fef3c7;color:#92400e;border:1px solid #fcd34d}
+.dashboard-status-absent{background:#fee2e2;color:#991b1b;border:1px solid #fca5a5}
+html[data-theme="dark"] .dashboard-status-present{background:#052e1b;color:#34d399;border-color:#065f46}
+html[data-theme="dark"] .dashboard-status-break{background:#422006;color:#fbbf24;border-color:#92400e}
+html[data-theme="dark"] .dashboard-status-absent{background:#450a0a;color:#fca5a5;border-color:#991b1b}
+
+@media(max-width:900px){
+ .dashboard-chart-grid{grid-template-columns:repeat(2,1fr)}
+}
+@media(max-width:560px){
+ .dashboard-chart-grid{grid-template-columns:1fr}
+}
+
+
+@media(max-width:900px){
+ .dashboard-grid{grid-template-columns:repeat(2,1fr)}
+ .dashboard-summary{grid-template-columns:1fr}
+}
+@media(max-width:560px){
+ .dashboard-grid{grid-template-columns:1fr}
+}
+
+
+/* زر إخفاء/إظهار سجل النشاط */
+#activityLogToggleBtn{
+ min-width:150px;
+ cursor:pointer;
+}
+
+
+/* ===== أوضاع العرض: لوحة التحكم / التقرير الأسبوعي / الكل ===== */
+.display-mode-bar{
+ display:flex;
+ gap:8px;
+ flex-wrap:wrap;
+ align-items:center;
+ margin:0 0 12px;
+}
+.display-mode-bar button{
+ cursor:pointer;
+}
+.display-mode-active{
+ outline:2px solid #2563eb;
+ outline-offset:1px;
+}
+body.display-dashboard-only #weeklyReportCard,
+body.display-dashboard-only .weekly-report-card,
+body.display-dashboard-only [data-section="weekly-report"]{
+ display:none !important;
+}
+body.display-dashboard-only .non-dashboard-section{
+ display:none !important;
+}
+/* شاشة العرض المخصصة: لوحة التحكم فقط وبملء الشاشة */
+body.dedicated-screen-mode #displayModeBar,
+body.dedicated-screen-mode header,
+body.dedicated-screen-mode #userBar,
+body.dedicated-screen-mode .userbar,
+body.dedicated-screen-mode .actions:not(.dashboard-actions){
+ display:none !important;
+}
+body.dedicated-screen-mode{overflow-x:hidden;}
+body.dedicated-screen-mode .dashboard-display,
+body.dedicated-screen-mode #dashboardSection,
+body.dedicated-screen-mode .dashboard-section{
+ width:100% !important;
+ max-width:none !important;
+}
+
+body.display-weekly-only .non-weekly-section{
+ display:none !important;
+}
+body.display-weekly-only #dashboardSection,
+body.display-weekly-only .dashboard-section,
+body.display-weekly-only [data-section="dashboard"]{
+ display:none !important;
+}
+
+
+/* ===== Weekly Report summary boxes only ===== */
+#weeklyReportSection .summary-box{
+ background:var(--weekly-summary-bg,#ffffff);
+ border:1px solid #9ca3af;
+ color:#000000;
+}
+#weeklyReportSection .summary-box small,
+#weeklyReportSection .summary-box strong{
+ color:#000000;
+}
+.weekly-color-control{
+ display:flex;
+ align-items:center;
+ gap:8px;
+ flex-wrap:wrap;
+ margin:10px 0 12px;
+}
+.weekly-color-control label{
+ font-weight:bold;
+ color:#111827;
+}
+.weekly-color-control input[type=color]{
+ width:24px;
+ height:24px;
+ padding:1px;
+ border:1px solid #9ca3af;
+ border-radius:4px;
+ background:#fff;
+ cursor:pointer;
+}
+.weekly-color-control button{
+ cursor:pointer;
+}
+
+
+/* =========================================================
+   THEME: LIGHT MODE
+========================================================= */
+html[data-theme="light"] body{
+ background:#eef2f7;
+ color:#172033;
+}
+
+html[data-theme="light"] header{
+ background:linear-gradient(120deg,#ffffff,#eaf1fb);
+ border-bottom:1px solid #cbd5e1;
+ box-shadow:0 8px 25px rgba(15,23,42,.08);
+}
+
+html[data-theme="light"] header h1{color:#172033}
+html[data-theme="light"] #clock{color:#64748b}
+
+html[data-theme="light"] .display-mode-bar{
+ background:#ffffff;
+ border-bottom:1px solid #dbe3ee;
+ box-shadow:0 3px 12px rgba(15,23,42,.06);
+}
+
+html[data-theme="light"] .card,
+html[data-theme="light"] .login-box,
+html[data-theme="light"] .modal-box{
+ background:#ffffff;
+ border-color:#d7e0eb;
+ color:#172033;
+ box-shadow:0 8px 24px rgba(15,23,42,.08);
+}
+
+html[data-theme="light"] h2,
+html[data-theme="light"] h3,
+html[data-theme="light"] label{
+ color:#172033;
+}
+
+html[data-theme="light"] input,
+html[data-theme="light"] select,
+html[data-theme="light"] textarea{
+ background:#f8fafc;
+ color:#172033;
+ border-color:#cbd5e1;
+}
+
+html[data-theme="light"] input::placeholder,
+html[data-theme="light"] textarea::placeholder{
+ color:#94a3b8;
+}
+
+html[data-theme="light"] .table-wrap{
+ border-color:#d7e0eb;
+}
+
+html[data-theme="light"] th{
+ background:#e8eef6;
+ color:#334155;
+ border-color:#d5deea;
+}
+
+html[data-theme="light"] td{
+ color:#334155;
+ border-color:#e2e8f0;
+}
+
+html[data-theme="light"] tbody tr{
+ background:#ffffff;
+}
+
+html[data-theme="light"] tbody tr:nth-child(even){
+ background:#f8fafc;
+}
+
+html[data-theme="light"] tbody tr:hover{
+ background:#eef5ff;
+}
+
+html[data-theme="light"] .stat,
+html[data-theme="light"] .summary-box,
+html[data-theme="light"] .dashboard-metric,
+html[data-theme="light"] .dashboard-summary-box,
+html[data-theme="light"] .dashboard-chart-box{
+ background:#f8fafc;
+ border-color:#d7e0eb;
+ color:#172033;
+}
+
+html[data-theme="light"] .stat span,
+html[data-theme="light"] .summary-box small,
+html[data-theme="light"] .muted,
+html[data-theme="light"] .sub{
+ color:#64748b;
+}
+
+html[data-theme="light"] .stat b,
+html[data-theme="light"] .summary-box strong,
+html[data-theme="light"] .dashboard-metric .value{
+ color:#172033;
+}
+
+html[data-theme="light"] .progress,
+html[data-theme="light"] .dashboard-chart-track{
+ background:#e2e8f0;
+}
+
+html[data-theme="light"] .userbar{
+ background:#ffffff;
+ border-bottom-color:#d7e0eb;
+ color:#172033;
+ box-shadow:0 3px 14px rgba(15,23,42,.06);
+}
+
+html[data-theme="light"] .badge-blue{
+ background:#eff6ff;
+ color:#1d4ed8;
+ border-color:#93c5fd;
+}
+
+html[data-theme="light"] .badge-green{
+ background:#ecfdf5;
+ color:#047857;
+ border-color:#6ee7b7;
+}
+
+html[data-theme="light"] .badge-orange{
+ background:#fff7ed;
+ color:#c2410c;
+ border-color:#fdba74;
+}
+
+html[data-theme="light"] .badge-red{
+ background:#fef2f2;
+ color:#b91c1c;
+ border-color:#fca5a5;
+}
+
+html[data-theme="light"] .badge-purple{
+ background:#f5f3ff;
+ color:#6d28d9;
+ border-color:#c4b5fd;
+}
+
+html[data-theme="light"] .smoking-cooldown{
+ background:#fff7ed;
+ border-color:#fdba74;
+ color:#b45309;
+}
+
+html[data-theme="light"] .smoking-cooldown.available{
+ background:#ecfdf5;
+ border-color:#6ee7b7;
+ color:#047857;
+}
+
+html[data-theme="light"] .weekly-color-control label{
+ color:#172033;
+}
+
+html[data-theme="light"] .danger{color:#b91c1c}
+html[data-theme="light"] .success{color:#047857}
+html[data-theme="light"] .warning{color:#b45309}
+html[data-theme="light"] .present{color:#047857}
+html[data-theme="light"] .out{color:#be123c}
+html[data-theme="light"] .break{color:#b45309}
+
+/* زر تبديل المظهر */
+#themeToggleBtn{
+ position:fixed;
+ top:12px;
+ left:14px;
+ z-index:10000;
+ padding:9px 13px;
+ border-radius:10px;
+ background:#334155;
+ color:#fff;
+ border:1px solid rgba(255,255,255,.12);
+ font-size:12px;
+}
+
+html[data-theme="light"] #themeToggleBtn{
+ background:#ffffff;
+ color:#172033;
+ border:1px solid #cbd5e1;
+ box-shadow:0 4px 12px rgba(15,23,42,.12);
+}
+
+@media(max-width:700px){
+ #themeToggleBtn{
+  top:8px;
+  left:8px;
+  font-size:11px;
+  padding:8px 10px;
+ }
+}
+
+/* =========================================================
+   THEME: DARK MODE (default)
+   This overrides the light-gray dashboard defaults above.
+========================================================= */
+html[data-theme="dark"] body{
+ background:#0b1220 !important;
+ color:#e5edf8 !important;
+}
+html[data-theme="dark"] header{
+ background:linear-gradient(120deg,#0b1324,#162844) !important;
+ color:#f1f5fb !important;
+ border-color:#263b5d !important;
+ box-shadow:0 10px 35px rgba(0,0,0,.35) !important;
+}
+html[data-theme="dark"] header h1{color:#f1f5fb !important}
+html[data-theme="dark"] #clock{color:#a9bdd9 !important}
+html[data-theme="dark"] .card,
+html[data-theme="dark"] .stats.card,
+html[data-theme="dark"] .stat,
+html[data-theme="dark"] .modal-box,
+html[data-theme="dark"] .login-box,
+html[data-theme="dark"] .userbar-inner,
+html[data-theme="dark"] .userbar{
+ background:#111c2f !important;
+ color:#e5edf8 !important;
+ border-color:#2b3d5c !important;
+ box-shadow:0 12px 30px rgba(0,0,0,.28) !important;
+}
+html[data-theme="dark"] h2,
+html[data-theme="dark"] h3,
+html[data-theme="dark"] label{color:#f1f5fb !important}
+html[data-theme="dark"] .muted,
+html[data-theme="dark"] .sub{color:#9fb0c8 !important}
+html[data-theme="dark"] input,
+html[data-theme="dark"] select,
+html[data-theme="dark"] textarea{
+ background:#0b1526 !important;
+ color:#e5edf8 !important;
+ border-color:#33445f !important;
+}
+html[data-theme="dark"] input::placeholder,
+html[data-theme="dark"] textarea::placeholder{color:#71839d !important}
+html[data-theme="dark"] input:focus,
+html[data-theme="dark"] select:focus,
+html[data-theme="dark"] textarea:focus{
+ border-color:#60a5fa !important;
+ box-shadow:0 0 0 3px rgba(59,130,246,.18) !important;
+}
+html[data-theme="dark"] .table-wrap{border-color:#2b3d5c !important;background:#0f192a !important}
+html[data-theme="dark"] th{
+ background:#17243a !important;
+ color:#e5edf8 !important;
+ border-bottom-color:#33445f !important;
+}
+html[data-theme="dark"] td{
+ background:#111c2f !important;
+ color:#dbe6f5 !important;
+ border-bottom-color:#263650 !important;
+}
+html[data-theme="dark"] tbody tr:nth-child(even) td{background:#0f192a !important}
+html[data-theme="dark"] tbody tr:hover td{background:#182942 !important}
+html[data-theme="dark"] .stat span{color:#9fb0c8 !important}
+html[data-theme="dark"] .stat b{color:#f1f5fb !important}
+html[data-theme="dark"] .display-mode-bar{
+ background:#0f192a !important;
+ border-bottom-color:#263650 !important;
+}
+html[data-theme="dark"] .display-mode-bar button.btn-blue,
+html[data-theme="dark"] .btn-blue{
+ background:#1d4ed8 !important;
+ color:#fff !important;
+ border:1px solid #3b82f6 !important;
+}
+html[data-theme="dark"] .btn-green{background:#059669 !important;color:#fff !important}
+html[data-theme="dark"] .btn-orange{background:#d97706 !important;color:#fff !important}
+html[data-theme="dark"] .btn-red{background:#dc2626 !important;color:#fff !important}
+html[data-theme="dark"] .btn-purple{background:#7c3aed !important;color:#fff !important}
+html[data-theme="dark"] .btn-dark{background:#334155 !important;color:#fff !important}
+html[data-theme="dark"] #themeToggleBtn{
+ background:#f8fafc !important;
+ color:#172033 !important;
+ border:1px solid #cbd5e1 !important;
+ position:fixed !important;
+ top:12px !important;
+ right:12px !important;
+ left:auto !important;
+ z-index:99999 !important;
+}
+html[data-theme="light"] #themeToggleBtn{
+ background:#172033 !important;
+ color:#fff !important;
+ border:1px solid #334155 !important;
+ position:fixed !important;
+ top:12px !important;
+ right:12px !important;
+ left:auto !important;
+ z-index:99999 !important;
+}
+html[data-theme="dark"] .weekly-color-control label{color:#e5edf8 !important}
+
 </style>
 </head>
 
 <body>
+<button type="button" id="themeToggleBtn" onclick="toggleTheme()">☀️ الوضع الفاتح</button>
+<div class="display-mode-bar" id="displayModeBar">
+ <button type="button" class="btn-blue" id="modeAllBtn" onclick="setDisplayMode('all')">عرض الكل</button>
+ <button type="button" class="btn-green" id="modeDashboardBtn" onclick="setDisplayMode('dashboard')">لوحة التحكم فقط</button>
+ <button type="button" class="btn-blue" id="modeWeeklyBtn" onclick="setDisplayMode('weekly')">التقرير الأسبوعي فقط</button>
+</div>
+
 
 <header>
  <h1>نظام الحضور والاستراحات</h1>
@@ -485,6 +1390,176 @@ tbody tr:last-child td{border-bottom:0}
 <div id="userBar"></div>
 
 <div class="container">
+
+  <!-- سجل الطلبات المتأخرة -->
+  <section class="card" id="lateOrdersCard">
+   <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+    <h2 style="margin:0">سجل الطلبات المتأخرة</h2>
+   </div>
+   <div id="lateOrdersContent">
+   <p class="muted" style="margin-top:-6px;margin-bottom:14px">يستطيع كل موظف تسجيل رقم الطلب واسم المطعم وسبب التأخير، وتظهر السجلات للجميع.</p>
+   <form id="lateOrderForm" onsubmit="submitLateOrder(event)">
+    <div class="form" style="grid-template-columns:1fr 1fr">
+     <input id="lateOrderNumber" required maxlength="100" placeholder="رقم الطلب">
+     <input id="lateRestaurantName" required maxlength="200" placeholder="اسم المطعم">
+    </div>
+    <div style="margin-top:10px">
+     <select id="lateOrderReasonSelect" required onchange="handleLateReasonChange()" style="width:100%;padding:12px;border-radius:8px">
+      <option value="">اختر سبب التأخير</option>
+     </select>
+     <textarea id="lateOrderReason" maxlength="2000" placeholder="اكتب تفاصيل السبب الآخر" style="display:none;margin-top:10px" ></textarea>
+    </div>
+    <div id="lateReasonAdminPanel" class="management-section" style="display:none;margin-top:14px;padding:12px;border:1px solid var(--border-color,#ddd);border-radius:10px">
+     <h3 style="margin-top:0">إدارة أسباب التأخير (للمسؤول والإدارة)</h3>
+     <div class="form" style="grid-template-columns:1fr auto">
+      <input id="newLateReasonName" maxlength="150" placeholder="أضف سبباً ثابتاً جديداً">
+      <button type="button" class="btn-blue" onclick="addLateOrderReason()">إضافة السبب</button>
+     </div>
+     <div id="lateReasonsAdminList" style="margin-top:8px"></div>
+    </div>
+    <div class="actions" style="justify-content:flex-start;margin-top:10px">
+     <button type="submit" class="btn-blue" id="lateOrderSubmitBtn">تسجيل الطلب المتأخر</button>
+     <button type="button" class="btn-dark" onclick="loadLateOrders()">تحديث السجل</button>
+     <button type="button" class="btn-dark" id="toggleLateOrdersVisibilityBtn" onclick="toggleLateOrdersVisibility()" aria-expanded="true">إخفاء قائمة السجلات</button>
+     <button type="button" class="btn-dark" id="clearLateOrdersBtn" onclick="clearLateOrdersSystemOnly()" style="display:none;background:#a93226">تصفير سجل النظام</button>
+    </div>
+   </form>
+   <div id="lateOrdersMessage" class="muted" role="status" style="margin:10px 0"></div>
+   <div class="toolbar admin-only" id="lateOrdersSearchToolbar" style="margin-top:12px;padding:12px;border:1px solid #bfdbfe;border-radius:12px;gap:8px">
+    <input id="lateOrderSearch" type="search" placeholder="رقم الطلب بالكامل" aria-label="رقم الطلب">
+    <input id="lateOrderFromDate" type="date" title="من تاريخ" aria-label="من تاريخ">
+    <input id="lateOrderToDate" type="date" title="إلى تاريخ" aria-label="إلى تاريخ">
+    <input id="lateOrderSearchDays" type="number" min="1" max="36500" placeholder="آخر كم يوم؟" title="عدد الأيام السابقة" aria-label="عدد الأيام">
+    <button type="button" class="btn-blue" onclick="searchLateOrders()">بحث</button>
+    <button type="button" class="btn-dark" onclick="resetLateOrderSearch()">مسح البحث</button>
+    <button type="button" class="btn-green" onclick="downloadLateOrders()">تنزيل سجل التأخيرات CSV</button>
+   </div>
+   <div class="table-wrap" style="margin-top:12px">
+    <table style="min-width:850px">
+     <thead><tr><th>تاريخ التسجيل</th><th>رقم الطلب</th><th>اسم المطعم</th><th>سبب التأخير</th><th>الموظف المسجل</th></tr></thead>
+     <tbody id="lateOrdersBody"><tr><td colspan="5">جارٍ تحميل سجل الطلبات...</td></tr></tbody>
+    </table>
+   </div>
+  </section>
+
+
+ <!-- لوحة التحكم المخصصة -->
+ <section class="dashboard-display management-section employee-hidden" id="customDashboard">
+  <div class="dashboard-title">
+   <h2>لوحة التحكم والملخص اليومي</h2>
+   <span class="dashboard-badge">عرض الشاشة</span>
+  </div>
+
+  <div class="dashboard-grid">
+   <div class="dashboard-metric">
+    <div class="label">إجمالي الموظفين</div>
+    <div class="value" id="dashTotalEmployees">0</div>
+    <div class="sub">الموظفون المسجلون حالياً</div>
+   </div>
+
+   <div class="dashboard-metric">
+    <div class="label">وقت العمل الكلي</div>
+    <div class="value" id="dashTotalWork">00:00</div>
+    <div class="sub">إجمالي ساعات العمل الفعلية اليوم</div>
+   </div>
+
+   <div class="dashboard-metric">
+    <div class="label">فترات الاستراحة</div>
+    <div class="value" id="dashTotalBreak">00:00</div>
+    <div class="sub">إجمالي مدة الاستراحات اليوم</div>
+   </div>
+
+   <div class="dashboard-metric">
+    <div class="label">متوسط التقييم</div>
+    <div class="value" id="dashAverageRating">0%</div>
+    <div class="sub">متوسط التقييم للموظفين</div>
+   </div>
+  </div>
+
+  <div class="dashboard-chart-box">
+   <h3>نسب لوحة التحكم</h3>
+   <div class="dashboard-chart-grid">
+    <div class="dashboard-chart-item">
+     <div class="dashboard-chart-label">الحضور</div>
+     <div class="dashboard-chart-track"><span id="dashAttendancePercentBar"></span></div>
+     <b id="dashAttendancePercent">0%</b>
+    </div>
+    <div class="dashboard-chart-item">
+     <div class="dashboard-chart-label">وقت العمل</div>
+     <div class="dashboard-chart-track"><span id="dashWorkPercentBar"></span></div>
+     <b id="dashWorkPercentChart">0%</b>
+    </div>
+    <div class="dashboard-chart-item">
+     <div class="dashboard-chart-label">التقييم</div>
+     <div class="dashboard-chart-track"><span id="dashCompliancePercentBar"></span></div>
+     <b id="dashCompliancePercent">0%</b>
+    </div>
+    <div class="dashboard-chart-item">
+     <div class="dashboard-chart-label">الاستراحات</div>
+     <div class="dashboard-chart-track"><span id="dashBreakPercentBar"></span></div>
+     <b id="dashBreakPercent">0%</b>
+    </div>
+   </div>
+  </div>
+
+  <div class="dashboard-summary">
+   <div class="dashboard-summary-box">
+    <h3>ملخص وقت العمل اليوم</h3>
+    <div class="dashboard-mini">
+     <span>الحاضرون حالياً</span>
+     <b id="dashPresent">0</b>
+    </div>
+    <div class="dashboard-mini">
+     <span>في الاستراحة</span>
+     <b id="dashBreakEmployees">0</b>
+    </div>
+    <div class="dashboard-mini">
+     <span>غير المتواجدين</span>
+     <b id="dashAbsent">0</b>
+    </div>
+    <div class="dashboard-mini">
+     <span>متوسط وقت العمل للموظف</span>
+     <b id="dashAverageWork">00:00</b>
+    </div>
+   </div>
+
+   <div class="dashboard-summary-box">
+    <h3>نسبة وقت العمل</h3>
+    <div class="dashboard-progress">
+     <span id="dashWorkProgress"></span>
+    </div>
+    <div class="dashboard-mini">
+     <span>مقابل 8 ساعات</span>
+     <b id="dashWorkPercent">0%</b>
+    </div>
+   </div>
+
+   <div class="dashboard-summary-box">
+    <h3>ملخص الاستراحات</h3>
+    <div class="dashboard-mini">
+     <span>عدد الاستراحات</span>
+     <b id="dashBreakCount">0</b>
+    </div>
+    <div class="dashboard-mini">
+     <span>متوسط الاستراحة</span>
+     <b id="dashAverageBreak">00:00</b>
+    </div>
+   </div>
+
+   <div class="dashboard-chart-box" id="dashboardEmployeeStatusSection">
+    <h3>حالة الموظفين الحالية</h3>
+    <div class="muted" style="margin-bottom:14px">عرض مباشر لحالة الموظفين — يتحدث تلقائياً.</div>
+    <div class="table-wrap">
+     <table>
+      <thead><tr><th>#</th><th>صورة الموظف</th><th>اسم الموظف</th><th>الحالة الحالية</th><th>وقت الدخول</th><th>نوع الاستراحة</th><th>مدة الاستراحة</th><th>إجمالي وقت العمل اليوم</th></tr></thead>
+      <tbody id="dashboardEmployeeStatusBody"><tr><td colspan="8">جارٍ تحميل بيانات الموظفين...</td></tr></tbody>
+     </table>
+    </div>
+    <div class="muted" id="dashboardStatusUpdatedAt" style="font-size:12px;margin-top:8px"></div>
+   </div>
+  </div>
+ </section>
+
 
  <!-- إدارة الموظفين -->
  <div class="card management-section">
@@ -515,7 +1590,9 @@ tbody tr:last-child td{border-bottom:0}
  <div class="card management-section">
   <h2>حسابات الموظفين</h2>
   <div class="form" style="grid-template-columns:1fr 1fr 1fr 1fr">
-   <input id="newEmployeeName" placeholder="اسم الموظف">
+   <select id="newEmployeeSelect">
+    <option value="">اختر الموظف المسجل...</option>
+   </select>
    <input id="newEmployeeUsername" placeholder="اسم المستخدم">
    <input id="newEmployeePassword" type="password" placeholder="كلمة المرور">
    <button class="btn-purple management-only" onclick="createEmployeeAccount()">إنشاء حساب موظف</button>
@@ -530,6 +1607,8 @@ tbody tr:last-child td{border-bottom:0}
   <div class="actions" style="margin-bottom:10px">
    <button class="btn-blue management-only" onclick="loadAccountProfiles()">تحديث قائمة الحسابات</button>
    <button class="btn-orange management-only" onclick="resetAllEmployeeBreaks()">♻️ تصفير استراحات الجميع</button>
+   <button class="btn-purple management-only" onclick="resetAllEmployeeWorkTimes()">⏱️ تصفير أوقات العمل</button>
+   <button class="btn-red management-only" onclick="resetAllTestData()">🧹 تصفير بيانات التجربة</button>
   </div>
   <div style="overflow-x:auto;margin-top:12px">
    <table>
@@ -578,7 +1657,7 @@ tbody tr:last-child td{border-bottom:0}
       <th>الحضور</th>
       <th>الاستراحة</th>
       <th>Cooldown</th>
-      <th>الالتزام</th>
+      <th>التقييم</th>
       <th>الإجراءات</th>
      </tr>
     </thead>
@@ -597,11 +1676,27 @@ tbody tr:last-child td{border-bottom:0}
    <input id="permissionNote" placeholder="الملاحظة">
    <button class="btn-purple" onclick="submitPermissionRequest()">إرسال الطلب</button>
   </div>
+  <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+   <button
+    class="btn-red management-only"
+    onclick="deleteTodayPermissionRequests()"
+   >
+    🗑️ حذف طلبات اليوم
+   </button>
+
+   <button
+    class="btn-dark management-only"
+    onclick="deleteAllPermissionRequests()"
+   >
+    🗑️ حذف كل الطلبات
+   </button>
+  </div>
+
   <div class="table-wrap"><table><thead><tr><th>الموظف</th><th>النوع</th><th>الملاحظة</th><th>التاريخ</th><th>الحالة</th><th>الإجراء</th></tr></thead><tbody id="permissionRequestsBody"><tr><td colspan="6">لا توجد طلبات أذونات</td></tr></tbody></table></div>
  </div>
 
  <!-- التقارير -->
- <div class="card management-section">
+ <div class="card management-section" id="weeklyReportSection">
 
   <h2>التقرير الأسبوعي</h2>
 
@@ -628,6 +1723,12 @@ tbody tr:last-child td{border-bottom:0}
     إنشاء التقرير
    </button>
 
+  </div>
+
+  <div class="weekly-color-control">
+   <label for="weeklySummaryBgColor">لون خلفية مربعات التقرير:</label>
+   <input type="color" id="weeklySummaryBgColor" value="#ffffff" title="اختيار لون خلفية مربعات التقرير">
+   <button type="button" class="btn-dark" onclick="resetWeeklySummaryColor()">إرجاع الأبيض</button>
   </div>
 
   <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
@@ -659,6 +1760,68 @@ tbody tr:last-child td{border-bottom:0}
 
  </div>
 
+
+ <!-- تقييم الموظفين والمخالفات -->
+ <div class="card" id="employeeEvaluationSection">
+  <p class="muted" style="margin:8px 0">التقييم يبدأ من 100 لكل فترة محددة؛ اليومي يحسب مخالفات اليوم فقط، والأسبوعي/الشهري يحسب مخالفات الفترة المختارة فقط. المخالفات تبقى محفوظة ولا تُحذف عند بداية يوم جديد.</p>
+  <h2>📊 تقييم الموظفين والمخالفات</h2>
+  <div class="evaluation-controls">
+   <div class="evaluation-date-field">
+    <label for="evaluationFrom">من تاريخ</label>
+    <input type="date" id="evaluationFrom">
+   </div>
+   <div class="evaluation-date-field">
+    <label for="evaluationTo">إلى تاريخ</label>
+    <input type="date" id="evaluationTo">
+   </div>
+   <div class="evaluation-date-field">
+    <label for="evaluationEmployee">الموظف</label>
+    <select id="evaluationEmployee"><option value="">كل الموظفين</option></select>
+   </div>
+   <button class="btn-blue" onclick="generateEmployeeEvaluation()">استخراج التقييم</button>
+   <button class="btn-green" onclick="setEvaluationToday()">اليوم</button>
+   <button class="btn-green" onclick="setEvaluationLast7Days()">آخر 7 أيام</button>
+   <button class="btn-green" onclick="setEvaluationThisMonth()">هذا الشهر</button>
+  </div>
+  <div class="card management-only" style="margin-top:12px;padding:14px;background:var(--surface2,#f8fafc)" id="evaluationPenaltySettings">
+   <h3 style="margin:0 0 10px">⚙️ خصومات المخالفات القابلة للتعديل</h3>
+   <div class="report-controls" style="grid-template-columns:repeat(4,1fr)">
+    <label>خروج بدون تبليغ <input type="number" id="penaltyUnnotifiedExit" min="0" max="100" value="5"></label>
+    <label>تجاوز الاستراحة <input type="number" id="penaltyBreakOverage" min="0" max="100" value="3"></label>
+    <label>غياب بدون إذن <input type="number" id="penaltyUnauthorizedAbsence" min="0" max="100" value="10"></label>
+    <label>نسيان تسجيل الاستراحة <input type="number" id="penaltyBreakMissing" min="0" max="100" value="2"></label>
+     <label>تدخين قبل مرور ساعة <input type="number" id="penaltySmokingEarly" min="0" max="100" value="2"></label>
+   </div>
+   <div class="actions" style="margin-top:10px;justify-content:flex-start">
+    <button class="btn-purple" onclick="saveEvaluationPenaltySettings()">💾 حفظ الخصومات</button>
+    <span class="muted">القيم تُحفظ في Supabase وتطبق على التقييمات الجديدة.</span>
+   </div>
+  </div>
+  <div class="toolbar management-only" style="margin-top:10px">
+   <select id="violationEmployee"></select>
+   <select id="violationType">
+    <option value="خروج بدون تبليغ">خروج بدون تبليغ</option>
+    <option value="تجاوز الاستراحة">تجاوز الاستراحة</option>
+    <option value="غياب بدون إذن">غياب بدون إذن</option>
+    <option value="تأخير">تأخير</option>
+    <option value="نسيان تسجيل الاستراحة">نسيان تسجيل الاستراحة</option>
+     <option value="تدخين قبل مرور ساعة">تدخين قبل مرور ساعة</option>
+    <option value="أخرى">أخرى</option>
+   </select>
+   <input type="number" id="violationPoints" min="0" max="100" value="5" placeholder="نقاط الخصم">
+   <input type="date" id="violationDate">
+   <input type="text" id="violationNote" placeholder="سبب المخالفة بالتفصيل (اختياري)">
+   <button class="btn-red" onclick="addEmployeeViolation()">➕ إضافة مخالفة</button>
+  </div>
+  <div id="employeeEvaluationArea" style="margin-top:18px"><p class="muted">حدد الفترة ثم اضغط استخراج التقييم.</p></div>
+  <div class="table-wrap" style="margin-top:18px">
+   <table>
+    <thead><tr><th>التاريخ</th><th>الموظف</th><th>المخالفة</th><th>الخصم</th><th>سبب المخالفة بالتفصيل</th><th>المصدر والحالة</th><th class="management-only">الإجراء</th></tr></thead>
+    <tbody id="violationsBody"><tr><td colspan="7">لا توجد مخالفات ضمن الفترة</td></tr></tbody>
+   </table>
+  </div>
+ </div>
+
  <!-- سجل الإدارة -->
  <div class="card management-section">
 
@@ -675,6 +1838,20 @@ tbody tr:last-child td{border-bottom:0}
     onclick="loadManagementLogs()"
    >
     تحديث السجل
+   </button>
+
+   <button
+    class="btn-red management-only"
+    onclick="deleteTodayManagementLogs()"
+   >
+    🗑️ حذف سجلات اليوم
+   </button>
+
+   <button
+    class="btn-dark management-only"
+    onclick="deleteAllManagementLogs()"
+   >
+    🗑️ حذف كل السجلات
    </button>
 
   </div>
@@ -700,25 +1877,40 @@ tbody tr:last-child td{border-bottom:0}
  </div>
 
  <!-- سجل النشاط -->
- <div class="card employee-hidden">
+ <div class="card employee-hidden" id="activityLogCard">
 
-  <h2>سجل النشاط</h2>
+  <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+   <h2 style="margin:0">سجل النشاط</h2>
 
-  <div class="table-wrap">
+   <button
+    type="button"
+    class="btn-dark"
+    id="activityLogToggleBtn"
+    onclick="toggleActivityLog()"
+   >
+    إخفاء سجل النشاط
+   </button>
+  </div>
 
-   <table>
-    <thead>
-     <tr>
-      <th>التاريخ</th>
-      <th>الموظف</th>
-      <th>الإجراء</th>
-      <th>المدة</th>
-      <th>التفاصيل</th>
-     </tr>
-    </thead>
+  <div id="activityLogContent" style="margin-top:12px">
 
-    <tbody id="activityLogsBody"></tbody>
-   </table>
+   <div class="table-wrap">
+
+    <table>
+     <thead>
+      <tr>
+       <th>التاريخ</th>
+       <th>الموظف</th>
+       <th>الإجراء</th>
+       <th>المدة</th>
+       <th>التفاصيل</th>
+      </tr>
+     </thead>
+
+     <tbody id="activityLogsBody"></tbody>
+    </table>
+
+   </div>
 
   </div>
 
@@ -733,7 +1925,7 @@ tbody tr:last-child td{border-bottom:0}
 
  <div class="modal-box">
 
-  <h2>تعديل نسبة الالتزام</h2>
+  <h2>تعديل نسبة التقييم</h2>
 
   <p class="muted" id="complianceEmployeeName"></p>
 
@@ -778,6 +1970,31 @@ tbody tr:last-child td{border-bottom:0}
 
   </div>
 
+ </div>
+</div>
+
+<!-- نافذة الملاحظة والتقييم الأسبوعي للمدير -->
+<div id="weeklyReviewModal" class="modal">
+ <div class="modal-box">
+  <h2>📝 ملاحظة وتقييم المدير</h2>
+  <p class="muted" id="weeklyReviewEmployeeName"></p>
+
+  <label>التقييم</label>
+  <select id="weeklyReviewRating" style="width:100%;margin-top:7px">
+   <option value="ممتاز">ممتاز</option>
+   <option value="جيد جداً">جيد جداً</option>
+   <option value="جيد">جيد</option>
+   <option value="مقبول">مقبول</option>
+   <option value="يحتاج تحسين">يحتاج تحسين</option>
+  </select>
+
+  <label style="display:block;margin-top:12px">ملاحظة المدير</label>
+  <textarea id="weeklyReviewNote" placeholder="اكتب ملاحظة المدير لهذا الموظف خلال الفترة المحددة..." style="margin-top:7px"></textarea>
+
+  <div class="modal-actions">
+   <button class="btn-dark" onclick="closeWeeklyReviewModal()">إلغاء</button>
+   <button class="btn-green" onclick="saveWeeklyReview()">حفظ الملاحظة والتقييم</button>
+  </div>
  </div>
 </div>
 
@@ -866,9 +2083,11 @@ let allEmployeesList = [];
 let attendanceList = [];
 let breaksList = [];
 let permissionRequests = [];
+let workSessionsList = [];
 const busyActions = new Set();
 
 let weeklyReportRows = [];
+let currentEvaluationViolations = [];
 
 let currentLang =
  localStorage.getItem('attendance_language') || 'ar';
@@ -902,12 +2121,67 @@ const BREAK_RULES = {
    BASIC HELPERS
 ========================================================= */
 
+const BAGHDAD_TZ='Asia/Baghdad';
+
+// إرجاع التاريخ بصيغة YYYY-MM-DD وفق توقيت بغداد دائماً، بصرف النظر عن إعدادات جهاز المستخدم.
+function baghdadDateOnly(value=new Date()){
+ const parts=new Intl.DateTimeFormat('en-CA',{
+  timeZone:BAGHDAD_TZ,year:'numeric',month:'2-digit',day:'2-digit'
+ }).formatToParts(value);
+ const get=type=>parts.find(p=>p.type===type)?.value||'';
+ return `${get('year')}-${get('month')}-${get('day')}`;
+}
+
 function today(){
+ return baghdadDateOnly();
+}
 
- return new Date()
-  .toISOString()
-  .slice(0,10);
+// الشفت موحّد لكل الموظفين: 7 مساءً إلى 2 صباحاً، ويُعامل كشفت واحد حتى بعد منتصف الليل.
+// من 00:00 إلى 06:59 نعرض تقييم الشفت الذي بدأ بالأمس؛ ومن 07:00 نجهّز تاريخ شفت اليوم.
+function currentShiftEvaluationRange(){
+ const now=new Date();
+ const hour=Number(new Intl.DateTimeFormat('en-GB',{timeZone:BAGHDAD_TZ,hour:'2-digit',hourCycle:'h23'}).format(now));
+ const calendarDay=today();
+ const from=(hour<7)?dateShift(calendarDay,-1):calendarDay;
+ const to=dateShift(from,1);
+ return {from,to,startUtc:new Date(`${from}T19:00:00+03:00`).getTime(),endUtc:new Date(`${to}T02:00:00+03:00`).getTime()};
+}
 
+// النقاط الحية تخص وقت الشفت الفعلي فقط، وليس كل مخالفات اليوم التقويمي.
+function filterViolationsForShift(rows,range){
+ return (rows||[]).filter(v=>{
+  if(!v.created_at)return String(v.violation_date||'')>=range.from&&String(v.violation_date||'')<=range.to;
+  const created=Date.parse(v.created_at);
+  return Number.isFinite(created)&&created>=range.startUtc&&created<range.endUtc;
+ });
+}
+
+// العراق على +03:00؛ نستخدم حدوداً شاملة البداية وحصرية النهاية لتجنب أخطاء آخر ثانية.
+function baghdadDayStartUtc(dateString){
+ return new Date(`${dateString}T00:00:00+03:00`).toISOString();
+}
+function baghdadNextDayStartUtc(dateString){
+ return new Date(new Date(baghdadDayStartUtc(dateString)).getTime()+86400000).toISOString();
+}
+function baghdadRangeUtc(from,to){
+ return {start:baghdadDayStartUtc(from),end:baghdadNextDayStartUtc(to)};
+}
+function todayStartUtc(){
+ return baghdadDayStartUtc(today());
+}
+
+// نافذة تحميل بيانات التشغيل: خلال 00:00–01:59 نحمّل بيانات الشفت الذي بدأ أمس 19:00.
+// خارج ذلك تبقى نافذة البيانات مرتبطة بتاريخ بغداد الحالي كما كانت.
+function operationalDataWindowStartUtc(){
+ const now=new Date();
+ const hour=Number(new Intl.DateTimeFormat('en-GB',{
+  timeZone:BAGHDAD_TZ,hour:'2-digit',hourCycle:'h23'
+ }).format(now));
+ if(hour<2){
+  const shiftStartDay=dateShift(today(),-1);
+  return new Date(`${shiftStartDay}T19:00:00+03:00`).toISOString();
+ }
+ return todayStartUtc();
 }
 
 
@@ -932,16 +2206,11 @@ function formatDate(value){
 
  return new Date(value)
   .toLocaleString(
-   currentLang === 'ar'
-    ? 'ar-IQ'
-    : 'en-US',
+   currentLang === 'ar' ? 'ar-IQ' : 'en-US',
    {
-    year:'numeric',
-    month:'2-digit',
-    day:'2-digit',
-    hour:'2-digit',
-    minute:'2-digit',
-    second:'2-digit'
+    timeZone:BAGHDAD_TZ,
+    year:'numeric',month:'2-digit',day:'2-digit',
+    hour:'2-digit',minute:'2-digit',second:'2-digit'
    }
   );
 
@@ -955,14 +2224,8 @@ function formatTime(value){
 
  return new Date(value)
   .toLocaleTimeString(
-   currentLang === 'ar'
-    ? 'ar-IQ'
-    : 'en-US',
-   {
-    hour:'2-digit',
-    minute:'2-digit',
-    second:'2-digit'
-   }
+   currentLang === 'ar' ? 'ar-IQ' : 'en-US',
+   {timeZone:BAGHDAD_TZ,hour:'2-digit',minute:'2-digit',second:'2-digit'}
   );
 
 }
@@ -1032,9 +2295,9 @@ function updateClock(){
 
  clock.innerText =
   new Date().toLocaleString(
-   currentLang === 'ar'
-    ? 'ar-IQ'
-    : 'en-US'
+   currentLang === 'ar' ? 'ar-IQ' : 'en-US',
+   {timeZone:BAGHDAD_TZ,year:'numeric',month:'2-digit',day:'2-digit',
+    hour:'2-digit',minute:'2-digit',second:'2-digit'}
   );
 
 }
@@ -1191,6 +2454,9 @@ async function initializeApplication(){
   applyPermissions();
 
   await loadAllData();
+  await loadLateOrders();
+  await loadLateOrderReasons();
+  subscribeLateOrdersRealtime();
   subscribeRealtime();
   if(isAdmin()) loadAccountProfiles();
 
@@ -1262,6 +2528,7 @@ function applyPermissions(){
  const management = isManagement();
  const employee = currentProfile?.role === 'employee';
  const admin = isAdmin();
+ const screen = currentProfile?.role === 'screen';
 
  document
   .querySelectorAll('.management-only, .management-section')
@@ -1281,13 +2548,48 @@ function applyPermissions(){
    el.style.display = admin ? '' : 'none';
   });
 
+ if(screen){
+  // Dedicated screen account: show only the read-only dashboard panel.
+  document.body.classList.add('dedicated-screen-mode');
+  document.querySelectorAll('.container > *').forEach(el=>{
+   el.style.display = 'none';
+  });
+  const dashboard = document.getElementById('customDashboard');
+  if(dashboard){
+   dashboard.style.display = 'block';
+   dashboard.classList.remove('management-section','employee-hidden');
+  }
+  const bar = document.getElementById('userBar');
+  if(bar) bar.style.display = 'none';
+  // Keep a dedicated, visible logout control for the read-only screen account.
+  let screenLogout = document.getElementById('screenLogoutButton');
+  if(!screenLogout){
+   screenLogout = document.createElement('button');
+   screenLogout.id = 'screenLogoutButton';
+   screenLogout.type = 'button';
+   screenLogout.textContent = 'تسجيل الخروج';
+   screenLogout.setAttribute('aria-label', 'تسجيل الخروج');
+   screenLogout.onclick = logout;
+   screenLogout.style.cssText = 'position:fixed;top:12px;left:12px;z-index:99999;background:#dc2626;color:#fff;border:0;border-radius:9px;padding:10px 16px;font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 3px 10px rgba(0,0,0,.18);';
+   document.body.appendChild(screenLogout);
+  }
+  const login = document.getElementById('loginScreen');
+  if(login) login.style.display = 'none';
+  // Remove visible controls from the display-only dashboard.
+  document.querySelectorAll('#customDashboard button, #customDashboard input, #customDashboard select, #customDashboard textarea').forEach(el=>{
+   el.style.display = 'none';
+  });
+ }
+
  const roleNote = document.getElementById('roleNote');
  if(roleNote){
-  roleNote.innerText = employee
-   ? 'وضع الموظف: يمكنك تسجيل حضورك وإدارة بريكاتك ووقتها فقط.'
-   : admin
-    ? 'وضع Admin: جميع صلاحيات الإدارة متاحة.'
-    : 'وضع المدير: صلاحيات الإدارة والتقارير متاحة.';
+  roleNote.innerText = screen
+   ? 'وضع الشاشة: عرض فقط.'
+   : employee
+    ? 'وضع الموظف: يمكنك تسجيل حضورك وإدارة بريكاتك ووقتها فقط.'
+    : admin
+     ? 'وضع Admin: جميع صلاحيات الإدارة متاحة.'
+     : 'وضع المدير: صلاحيات الإدارة والتقارير متاحة.';
  }
 
 }
@@ -1299,10 +2601,23 @@ function applyPermissions(){
 ========================================================= */
 
 async function loadAllData(options={}){
- const jobs=[loadEmployees(),loadTodayAttendance(),loadTodayBreaks()];
+ const jobs=[
+  loadEmployees(),
+  loadTodayAttendance(),
+  loadTodayBreaks(),
+  loadTodayWorkSessions(),
+  loadActivityLogs()
+ ];
  if(currentUser) jobs.push(loadPermissionRequests());
  await Promise.all(jobs);
+ try{
+  await loadEvaluationPenaltySettings();
+  const shiftRange=currentShiftEvaluationRange();
+  await syncAutomaticBreakViolations(shiftRange.from,shiftRange.to);
+  currentEvaluationViolations=filterViolationsForShift(await loadViolations(shiftRange.from,shiftRange.to),shiftRange);
+ }catch(e){console.warn('Evaluation score refresh:',e);}
  populateEmployeeSelects(); renderTable(); updateStats(); renderPermissionRequests();
+ if(document.getElementById('employeeEvaluationSection')){ fillEvaluationEmployees(); }
  if(isAdmin() && options.accounts) loadAccountProfiles();
 }
 
@@ -1316,14 +2631,20 @@ async function loadEmployees(){
 }
 
 function populateEmployeeSelects(){
- const preset=document.getElementById('presetEmployee'), report=document.getElementById('reportEmployee'), management=document.getElementById('managementEmployeeFilter');
+ const preset=document.getElementById('presetEmployee'), report=document.getElementById('reportEmployee'), management=document.getElementById('managementEmployeeFilter'), accountEmployee=document.getElementById('newEmployeeSelect');
  if(!preset||!report||!management) return;
+ if(accountEmployee) accountEmployee.innerHTML='<option value="">اختر الموظف المسجل...</option>';
  preset.innerHTML='<option value="">اختر موظفاً مسجلاً...</option>';
  report.innerHTML='<option value="">كل الموظفين</option>';
  management.innerHTML='<option value="">كل الموظفين</option>';
  employeesList.forEach(emp=>{
   preset.insertAdjacentHTML('beforeend',`<option value="${esc(emp.name)}">${esc(emp.name)}</option>`);
  });
+ if(accountEmployee){
+  employeesList.forEach(emp=>{
+   accountEmployee.insertAdjacentHTML('beforeend',`<option value="${emp.id}">${esc(emp.name)}</option>`);
+  });
+ }
  const reportList=isManagement()?allEmployeesList:employeesList;
  reportList.forEach(emp=>{
   report.insertAdjacentHTML('beforeend',`<option value="${emp.id}">${esc(emp.name)}${emp.active===false?' (معطل)':''}</option>`);
@@ -1361,21 +2682,21 @@ async function addEmployee(){
 
 async function createEmployeeAccount(){
  if(!isManagement()) return showToast('ليس لديك صلاحية إنشاء حساب موظف');
- const name=document.getElementById('newEmployeeName').value.trim();
+ const employeeId=document.getElementById('newEmployeeSelect').value;
  const username=document.getElementById('newEmployeeUsername').value.trim().toLowerCase();
  const password=document.getElementById('newEmployeePassword').value;
- if(!name||!username||!password) return showToast('أدخل اسم الموظف واسم المستخدم وكلمة المرور');
+ const employee=(allEmployeesList||[]).find(e=>String(e.id)===String(employeeId));
+ if(!employee||employee.active===false) return showToast('اختر موظفاً نشطاً مسجلاً أولاً');
+ if(!username||!password) return showToast('أدخل اسم المستخدم وكلمة المرور');
  if(!/^[a-z0-9._-]{3,30}$/.test(username)) return showToast('اسم المستخدم يجب أن يكون بالإنجليزية 3 أحرف على الأقل');
  if(password.length<6) return showToast('كلمة المرور يجب أن تكون 6 أحرف على الأقل');
- if(allEmployeesList.some(e=>String(e.name||'').trim().toLowerCase()===name.toLowerCase())) return showToast('الموظف موجود بالفعل');
- const {data,error}=await supabaseClient.functions.invoke('create-employee-user',{body:{name,username,password}});
+ const {data,error}=await supabaseClient.functions.invoke('create-employee-user',{body:{employee_id:employee.id,username,password}});
  if(error||data?.error){ console.error(error||data?.error); return showToast(data?.error||'تعذر إنشاء حساب الموظف'); }
- document.getElementById('newEmployeeName').value='';
+ document.getElementById('newEmployeeSelect').value='';
  document.getElementById('newEmployeeUsername').value='';
  document.getElementById('newEmployeePassword').value='';
- await loadEmployees(); populateEmployeeSelects(); renderTable(); updateStats();
- if(isAdmin()) loadAccountProfiles();
- showToast('تم إنشاء حساب الموظف بنجاح');
+ if(isAdmin()) await loadAccountProfiles();
+ showToast('تم إنشاء الحساب وربطه بالموظف: '+employee.name);
 }
 
 async function loadAccountProfiles(){
@@ -1419,29 +2740,31 @@ async function reactivateEmployee(employeeId){
 ========================================================= */
 
 async function loadTodayAttendance(){
-
- const {
-  data,
-  error
- } =
- await supabaseClient
+ // أثناء الشفت اللي يعبر منتصف الليل، لا نعتبر الموظف منصرفاً لمجرد تغيّر التاريخ.
+ // نحمّل سجلات اليوم الحالي واليوم السابق، ونُبقي سجل الأمس مفتوحاً حتى الساعة 02:00 بتوقيت بغداد.
+ const currentDay=today();
+ const previousDay=dateShift(currentDay,-1);
+ const hour=Number(new Intl.DateTimeFormat('en-GB',{
+  timeZone:BAGHDAD_TZ,hour:'2-digit',hourCycle:'h23'
+ }).format(new Date()));
+ const withinOvernightShift=hour<2;
+ const {data,error}=await supabaseClient
   .from('attendance')
   .select('*')
-  .eq(
-   'attendance_date',
-   today()
-  );
+  .gte('attendance_date',previousDay)
+  .lte('attendance_date',currentDay);
 
  if(error){
-
-  console.error(error);
-
+  console.error('LOAD SHIFT ATTENDANCE ERROR',error);
   return;
-
  }
 
- attendanceList=data||[];
-
+ attendanceList=(data||[]).filter(row=>{
+  if(String(row.attendance_date)===currentDay) return true;
+  // سجل اليوم السابق يبقى نشطاً فقط إذا كان الشفت ما زال ضمن 19:00–02:00.
+  return withinOvernightShift && String(row.attendance_date)===previousDay &&
+   (row.present===true || (!!row.check_in && !row.check_out));
+ });
 }
 
 
@@ -1462,35 +2785,35 @@ function getAttendance(employeeId){
 
 async function loadTodayBreaks(){
 
- const start =
-  today()+'T00:00:00';
-
- const {
-  data,
-  error
- } =
- await supabaseClient
+ const start = operationalDataWindowStartUtc();
+ const {data,error} = await supabaseClient
   .from('breaks')
   .select('*')
-  .gte(
-   'start_time',
-   start
-  )
-  .order(
-   'start_time',
-   {ascending:false}
-  );
+  .gte('start_time',start)
+  .order('start_time',{ascending:false});
 
  if(error){
-
-  console.error(error);
-
+  console.error('LOAD TODAY BREAKS ERROR',error);
   return;
-
  }
 
- breaksList=data||[];
-
+ // لا تستبدل الحالة المحلية بالكامل بنتيجة استعلام بدأت قبل حفظ الاستراحة؛
+ // قد يصل تحديث realtime أثناء الاستعلام ثم تعود النتيجة القديمة وتخفيها من الواجهة.
+ const fetched = Array.isArray(data) ? data : [];
+ const byId = new Map(fetched.map(row=>[String(row.id),row]));
+ const todayStart = new Date(start).getTime();
+ for(const local of breaksList){
+  if(!local?.id || byId.has(String(local.id))) continue;
+  const localStart = new Date(local.start_time).getTime();
+  // احتفظ بالاستراحات النشطة التي ظهرت محلياً للتو إذا لم يتضمنها
+  // الاستعلام المتأخر؛ فهي موجودة بالفعل في قاعدة البيانات.
+  if(!local.end_time && Number.isFinite(localStart) && localStart >= todayStart){
+   byId.set(String(local.id),local);
+  }
+ }
+ breaksList = Array.from(byId.values()).sort((a,b)=>
+  new Date(b.start_time)-new Date(a.start_time)
+ );
 }
 
 
@@ -1505,6 +2828,208 @@ function getActiveBreak(employeeId){
 
 }
 
+async function getActiveSmokingOrDinnerBreak(){
+ const local=breaksList.find(b=>
+  !b.end_time &&
+  (b.break_type==='smoking' || b.break_type==='dinner')
+ );
+ if(local) return {data:local,error:null};
+
+ const {data,error}=await supabaseClient
+  .from('breaks')
+  .select('*')
+  .is('end_time',null)
+  .in('break_type',['smoking','dinner'])
+  .limit(1);
+
+ if(error){
+  console.error('ACTIVE SMOKING/DINNER BREAK CHECK ERROR',error);
+  return {data:null,error};
+ }
+
+ return {data:(data||[])[0]||null,error:null};
+}
+
+async function getGlobalActiveBreak(excludeEmployeeId=null){
+ const local=breaksList.find(b=>
+  !b.end_time &&
+  (excludeEmployeeId===null || Number(b.employee_id)!==Number(excludeEmployeeId))
+ );
+ if(local) return {data:local,error:null};
+
+ const {data,error}=await supabaseClient
+  .from('breaks')
+  .select('*')
+  .is('end_time',null)
+  .limit(1);
+
+ if(error){
+  console.error('GLOBAL ACTIVE BREAK CHECK ERROR',error);
+  return {data:null,error};
+ }
+
+ const active=(data||[]).find(b=>
+  excludeEmployeeId===null || Number(b.employee_id)!==Number(excludeEmployeeId)
+ );
+ return {data:active||null,error:null};
+}
+
+
+/* =========================================================
+   ACTUAL WORK SESSIONS
+========================================================= */
+
+async function loadTodayWorkSessions(){
+ const start=operationalDataWindowStartUtc();
+ const {data,error}=await supabaseClient
+  .from('work_sessions')
+  .select('*')
+  .gte('start_time',start)
+  .order('start_time',{ascending:false});
+ if(error){
+  console.warn('تعذر تحميل سجل وقت العمل الفعلي:',error);
+  workSessionsList=[];
+  return;
+ }
+ workSessionsList=data||[];
+}
+
+function getActiveWorkSession(employeeId){
+ return workSessionsList.find(s=>Number(s.employee_id)===Number(employeeId)&&!s.end_time);
+}
+
+function workSessionMinutes(session,at=new Date()){
+ if(!session?.start_time) return 0;
+ return session.end_time
+  ? Number(session.duration_minutes||minutesBetween(session.start_time,session.end_time))
+  : minutesBetween(session.start_time,at);
+}
+
+function getTodayActualWorkMinutes(employeeId){
+ return workSessionsList
+  .filter(s=>Number(s.employee_id)===Number(employeeId))
+  .reduce((sum,s)=>sum+workSessionMinutes(s),0);
+}
+
+function patchWorkSession(row){
+ const i=workSessionsList.findIndex(x=>Number(x.id)===Number(row.id));
+ if(i>=0) workSessionsList[i]=row;
+ else workSessionsList.unshift(row);
+}
+
+async function openWorkSession(employeeId,attendanceId,startTime){
+ // الموظف يفتح جلسة العمل عبر RPC آمنة؛ الإدارة تستخدم المسار المباشر.
+ if(currentProfile?.role === 'employee' && Number(employeeId) === Number(currentProfile.employee_id)){
+  const {data,error}=await supabaseClient.rpc('employee_check_in');
+  if(error){
+   console.error('EMPLOYEE CHECK-IN RPC ERROR',error);
+   return {error};
+  }
+  const ws=data?.work_session||null;
+  if(ws) patchWorkSession(ws);
+  return {data:ws,attendance:data?.attendance||null};
+ }
+
+ const {data,error}=await supabaseClient.from('work_sessions').insert({
+  employee_id:employeeId,
+  attendance_id:attendanceId||null,
+  start_time:startTime||new Date().toISOString()
+ }).select().single();
+ if(error){
+  console.error('OPEN WORK SESSION ERROR',error);
+  return {error};
+ }
+ patchWorkSession(data);
+ return {data};
+}
+
+async function closeWorkSession(employeeId,endTime){
+ if(currentProfile?.role === 'employee' && Number(employeeId) === Number(currentProfile.employee_id)){
+  // لا نغلق جلسة الموظف مباشرة؛ الانصراف/البريك يستخدمان RPC الخاصة بهما.
+  return {data:null,skippedForEmployee:true};
+ }
+
+ const active=getActiveWorkSession(employeeId);
+ if(!active) return {data:null};
+ const end=endTime||new Date().toISOString();
+ const duration=minutesBetween(active.start_time,end);
+ const {data,error}=await supabaseClient.from('work_sessions').update({
+  end_time:end,
+  duration_minutes:duration
+ }).eq('id',active.id).select().single();
+ if(error){
+  console.error('CLOSE WORK SESSION ERROR',error);
+  return {error};
+ }
+ patchWorkSession(data||{...active,end_time:end,duration_minutes:duration});
+ return {data:data||{...active,end_time:end,duration_minutes:duration}};
+}
+
+async function employeeCheckInSecure(){
+ const {data,error}=await supabaseClient.rpc('employee_check_in');
+ if(error){
+  console.error('EMPLOYEE CHECK-IN RPC ERROR',error);
+  return {error};
+ }
+ const employeeId=Number(currentProfile?.employee_id);
+ // Reload the persisted attendance row after the RPC; do not rely on stale client state.
+ await loadTodayAttendance();
+ await loadTodayWorkSessions();
+ const attendance=getAttendance(employeeId);
+ if(!attendance || attendance.present!==true || attendance.check_out){
+  const verificationError=new Error('تم استلام رد من دالة الحضور لكن سجل الحضور الفعّال لم يتحدّث في قاعدة البيانات.');
+  console.error('EMPLOYEE CHECK-IN VERIFICATION FAILED', {rpcData:data, attendance});
+  return {error:verificationError,data:{rpc:data,attendance:null}};
+ }
+ patchAttendance(attendance);
+ const {data:ws,error:wsError}=await supabaseClient
+  .from('work_sessions')
+  .select('*')
+  .eq('employee_id',employeeId)
+  .is('end_time',null)
+  .order('id',{ascending:false})
+  .limit(1)
+  .maybeSingle();
+ if(wsError){
+  console.error('EMPLOYEE CHECK-IN READ SESSION ERROR',wsError);
+  return {error:wsError};
+ }
+ if(ws) patchWorkSession(ws);
+ return {data:{...data,attendance,work_session:ws}};
+}
+
+async function employeeCheckOutSecure(){
+ const {data,error}=await supabaseClient.rpc('employee_check_out');
+ if(error){
+  console.error('EMPLOYEE CHECK-OUT RPC ERROR',error);
+  return {error};
+ }
+ const employeeId=Number(currentProfile?.employee_id);
+ const {data:attendance,error:attendanceError}=await supabaseClient
+  .from('attendance')
+  .select('*')
+  .eq('employee_id',employeeId)
+  .eq('attendance_date',today())
+  .maybeSingle();
+ if(attendanceError){
+  console.error('EMPLOYEE CHECK-OUT READ ATTENDANCE ERROR',attendanceError);
+  return {error:attendanceError};
+ }
+ if(attendance) patchAttendance(attendance);
+ const {data:sessions,error:sessionsError}=await supabaseClient
+  .from('work_sessions')
+  .select('*')
+  .eq('employee_id',employeeId)
+  .order('id',{ascending:false})
+  .limit(1);
+ if(sessionsError){
+  console.error('EMPLOYEE CHECK-OUT READ SESSION ERROR',sessionsError);
+  return {error:sessionsError};
+ }
+ const ws=sessions?.[0]||null;
+ if(ws) patchWorkSession(ws);
+ return {data:{...data,attendance,work_session:ws}};
+}
 
 /* =========================================================
    CHECK IN
@@ -1516,102 +3041,83 @@ function patchAttendance(row){ const i=attendanceList.findIndex(x=>Number(x.id)=
 function patchBreak(row){ const i=breaksList.findIndex(x=>Number(x.id)===Number(row.id)); if(i>=0) breaksList[i]=row; else breaksList.unshift(row); }
 
 async function checkIn(employeeId){
- const key='checkin:'+employeeId;
- if(!beginAction(key)) return;
+ const key='checkin:'+employeeId; if(!beginAction(key)) return;
  try{
   if(currentProfile?.role === 'employee' && Number(employeeId) !== Number(currentProfile.employee_id)){
-   showToast('لا يمكنك تنفيذ إجراء على موظف آخر');
-   return;
+   showToast('لا يمكنك تنفيذ إجراء على موظف آخر'); return;
   }
 
-  const employee = employeesList.find(e=>Number(e.id)===Number(employeeId));
-  if(!employee){
-   showToast('تعذر العثور على بيانات الموظف');
-   return;
-  }
-
-  const existing=getAttendance(employeeId);
-  if(existing?.present){
-   showToast('الموظف مسجل حضور بالفعل');
-   return;
-  }
-
-  const now=new Date().toISOString();
-  let savedRow=null;
-
-  // الموظف يسجل حضوره من خلال RPC آمن يعتمد على حسابه المسجل،
-  // بدلاً من الكتابة المباشرة التي قد تمنعها سياسات RLS.
   if(currentProfile?.role === 'employee'){
-   const { error: rpcError } = await supabaseClient.rpc('employee_check_in');
-   if(rpcError){
-    console.error('employee_check_in failed:',rpcError);
-    showToast('تعذر تسجيل الحضور: '+(rpcError.message||'تحقق من الاتصال والصلاحيات'));
-    return;
-   }
+   const employee=employeesList.find(e=>Number(e.id)===Number(employeeId));
+   if(!employee) return;
+   const {data,error}=await employeeCheckInSecure();
+   if(error){ showToast(error.message||'تعذر تسجيل الحضور'); return; }
+   renderTable(); updateStats();
+   writeActivity(employeeId,employee.name,'تسجيل حضور',null,'بدأ وقت العمل الفعلي').catch(()=>{});
+   showToast('تم تسجيل الحضور وبدأ وقت العمل الفعلي');
+   return;
+  }
 
-   // نقرأ السجل المحفوظ فعلياً بعد نجاح الدالة، حتى لا نظهر حضوراً وهمياً بالواجهة.
-   const { data, error: readError } = await supabaseClient
-    .from('attendance')
-    .select('*')
-    .eq('employee_id',employeeId)
-    .eq('attendance_date',today())
-    .order('check_in',{ascending:false})
-    .limit(1);
+  const employee=employeesList.find(e=>Number(e.id)===Number(employeeId));
+  if(!employee) return;
+  const existing=getAttendance(employeeId);
+  if(existing?.present){ showToast('الموظف مسجل حضور بالفعل'); return; }
+  const now=new Date().toISOString();
+  const wasExisting=!!existing;
+  const previousRow=existing ? {...existing} : null;
+  let row;
 
-   if(readError){
-    console.error('attendance read after check-in failed:',readError);
-    showToast('تم إرسال طلب الحضور، لكن تعذر تحديث الجدول. حدّث الصفحة للتحقق.');
-    await loadAttendance();
-    renderTable();
-    updateStats();
-    return;
-   }
-   savedRow=(data||[]).find(r=>r.check_in)||null;
-   if(!savedRow){
-    await loadAttendance();
-    renderTable();
-    updateStats();
-    showToast('لم يظهر سجل الحضور بعد؛ حدّث الصفحة وتحقق من قاعدة البيانات');
-    return;
-   }
+  if(existing){
+   const {data,error}=await supabaseClient.from('attendance')
+    .update({present:true,check_in:now,check_out:null})
+    .eq('id',existing.id).select().single();
+   if(error){console.error(error);showToast('تعذر تسجيل الحضور');return;}
+   row=data;
   }else{
-   // تسجيل حضور الموظف بواسطة المدير/المسؤول مع استرجاع السجل الحقيقي.
-   let query;
-   if(existing){
-    query=await supabaseClient
-     .from('attendance')
-     .update({present:true,check_in:now,check_out:null,checkout_source:null})
-     .eq('id',existing.id)
-     .select('*')
-     .single();
-   }else{
-    query=await supabaseClient
-     .from('attendance')
-     .insert({employee_id:employeeId,attendance_date:today(),present:true,check_in:now})
-     .select('*')
-     .single();
-   }
-   if(query.error){
-    console.error('management check-in failed:',query.error);
-    showToast('تعذر تسجيل الحضور: '+(query.error.message||'تحقق من الصلاحيات'));
-    return;
-   }
-   savedRow=query.data;
+   const {data,error}=await supabaseClient.from('attendance')
+    .insert({employee_id:employeeId,attendance_date:today(),present:true,check_in:now})
+    .select().single();
+   if(error){console.error(error);showToast('تعذر تسجيل الحضور');return;}
+   row=data;
   }
 
-  if(savedRow){
-   patchAttendance(savedRow);
-   renderTable();
-   updateStats();
-   writeActivity(employeeId,employee.name,'تسجيل حضور',null,'تم تسجيل الحضور').catch(()=>{});
-   showToast('تم تسجيل الحضور بنجاح');
+  patchAttendance(row);
+  const ws=await openWorkSession(employeeId,row.id,now);
+  if(ws.error){
+   console.error('CHECK-IN WORK SESSION ROLLBACK',ws.error);
+
+   if(wasExisting && previousRow){
+    const {data:rollbackRow,error:rollbackError}=await supabaseClient.from('attendance')
+     .update({
+      present:previousRow.present ?? false,
+      check_in:previousRow.check_in ?? null,
+      check_out:previousRow.check_out ?? null
+     })
+     .eq('id',row.id).select().single();
+    if(rollbackError) console.error('CHECK-IN ATTENDANCE ROLLBACK ERROR',rollbackError);
+    patchAttendance(rollbackRow||previousRow);
+   }else{
+    const {error:deleteError}=await supabaseClient.from('attendance').delete().eq('id',row.id);
+    if(deleteError){
+     console.error('CHECK-IN ATTENDANCE DELETE ROLLBACK ERROR',deleteError);
+     const {data:rollbackRow}=await supabaseClient.from('attendance')
+      .update({present:false,check_in:null,check_out:null})
+      .eq('id',row.id).select().single();
+     if(rollbackRow) patchAttendance(rollbackRow);
+    }else{
+     attendanceList=attendanceList.filter(a=>Number(a.id)!==Number(row.id));
+    }
+   }
+
+   renderTable(); updateStats();
+   showToast('تعذر بدء مؤقت وقت العمل، وتم التراجع عن تسجيل الحضور');
+   return;
   }
- }catch(err){
-  console.error('checkIn error:',err);
-  showToast('حدث خطأ أثناء تسجيل الحضور');
- }finally{
-  endAction(key);
- }
+
+  renderTable(); updateStats();
+  writeActivity(employeeId,employee.name,'تسجيل حضور',null,'بدأ وقت العمل الفعلي').catch(()=>{});
+  showToast('تم تسجيل الحضور وبدأ وقت العمل الفعلي');
+ }finally{ endAction(key); }
 }
 
 /* =========================================================
@@ -1621,80 +3127,74 @@ async function checkIn(employeeId){
 async function checkOut(employeeId){
  const key='checkout:'+employeeId; if(!beginAction(key)) return;
  try{
- if(currentProfile?.role === 'employee' && Number(employeeId) !== Number(currentProfile.employee_id)){
-  showToast('لا يمكنك تنفيذ إجراء على موظف آخر');
-  return;
- }
+  if(currentProfile?.role === 'employee' && Number(employeeId) !== Number(currentProfile.employee_id)){
+   showToast('لا يمكنك تنفيذ إجراء على موظف آخر'); return;
+  }
 
+  if(currentProfile?.role === 'employee'){
+   const employee=employeesList.find(e=>Number(e.id)===Number(employeeId));
+   if(!employee) return;
+   const active=getActiveBreak(employeeId);
+   if(active){ showToast('يجب إنهاء الاستراحة أولاً'); return; }
+   const {data,error}=await employeeCheckOutSecure();
+   if(error){ showToast(error.message||'تعذر تسجيل الخروج'); return; }
+   renderTable(); updateStats();
+   const duration=getTodayActualWorkMinutes(employeeId);
+   writeActivity(employeeId,employee.name,'تسجيل خروج',duration+' دقيقة','تم إيقاف وقت العمل الفعلي وإغلاق اليوم').catch(()=>{});
+   showToast('تم تسجيل الخروج وإيقاف وقت العمل الفعلي');
+   return;
+  }
 
- const employee =
-  employeesList.find(
-   e=>Number(e.id)===Number(employeeId)
-  );
+  const employee=employeesList.find(e=>Number(e.id)===Number(employeeId));
+  const attendance=getAttendance(employeeId);
+  if(!employee || !attendance) return;
+  const active=getActiveBreak(employeeId);
+  if(active){ showToast('يجب إنهاء الاستراحة أولاً'); return; }
+  if(!attendance.present){ showToast('الموظف غير مسجل حضور حالياً'); return; }
 
- const attendance =
-  getAttendance(employeeId);
+  const now=new Date().toISOString();
+  const activeSession=getActiveWorkSession(employeeId);
+  let closedSession=null;
 
- if(!employee || !attendance)
-  return;
+  // أولاً نغلق جلسة العمل. إذا فشل الإغلاق لا نسجل الانصراف حتى لا تصبح البيانات متناقضة.
+  if(activeSession){
+   const ws=await closeWorkSession(employeeId,now);
+   if(ws.error){
+    showToast('تعذر إغلاق وقت العمل، ولم يتم تسجيل الانصراف');
+    return;
+   }
+   closedSession=ws.data||null;
+  }
 
- const active =
-  getActiveBreak(employeeId);
+  const {data:updatedAttendance,error}=await supabaseClient.from('attendance')
+   .update({present:false,check_out:now,checkout_source:'management'})
+   .eq('id',attendance.id)
+   .eq('present',true)
+   .select().single();
 
- if(active){
+  if(error){
+   console.error('CHECK-OUT ATTENDANCE ERROR',error);
 
-  showToast(
-   'يجب إنهاء الاستراحة أولاً'
-  );
+   // محاولة إعادة فتح جلسة العمل إذا نجح إغلاقها لكن فشل تسجيل الانصراف.
+   if(closedSession?.id){
+    const {data:reopened,error:reopenError}=await supabaseClient.from('work_sessions')
+     .update({end_time:null,duration_minutes:null})
+     .eq('id',closedSession.id).select().single();
+    if(reopenError) console.error('CHECK-OUT WORK SESSION ROLLBACK ERROR',reopenError);
+    if(reopened) patchWorkSession(reopened);
+   }
 
-  return;
+   showToast('تعذر تسجيل الخروج ولم يتم إنهاء اليوم');
+   return;
+  }
 
- }
-
- const now =
-  new Date().toISOString();
-
- let checkoutError = null;
-
- // خروج الموظف نفسه يمر عبر RPC حتى تُسجَّل العملية كمغادرة يدوية موثّقة.
- if(currentProfile?.role === 'employee'){
-  const { error } = await supabaseClient.rpc('employee_check_out');
-  checkoutError = error;
- }else{
-  // إغلاق المدير/المسؤول لا يُعامل كمخالفة خروج موظف.
-  const { error } = await supabaseClient
-   .from('attendance')
-   .update({
-    present:false,
-    check_out:now,
-    checkout_source:'management'
-   })
-   .eq('id',attendance.id);
-  checkoutError = error;
- }
-
- if(checkoutError){
-  console.error(checkoutError);
-  showToast('تعذر تسجيل الخروج');
-  return;
- }
-
- const duration =
-  minutesBetween(
-   attendance.check_in,
-   now
-  );
-
- attendance.present=false; attendance.check_out=now; patchAttendance(attendance); renderTable(); updateStats();
- writeActivity(employeeId,employee.name,'تسجيل خروج',duration+' دقيقة','تم تسجيل الخروج').catch(()=>{});
-
- showToast(
-  'تم تسجيل الخروج'
- );
-
+  patchAttendance(updatedAttendance||{...attendance,present:false,check_out:now});
+  const duration=getTodayActualWorkMinutes(employeeId);
+  renderTable(); updateStats();
+  writeActivity(employeeId,employee.name,'تسجيل خروج',duration+' دقيقة','تم إيقاف وقت العمل الفعلي وإغلاق اليوم').catch(()=>{});
+  showToast('تم تسجيل الخروج وإيقاف وقت العمل الفعلي');
  }finally{ endAction(key); }
 }
-
 
 /* =========================================================
    START BREAK
@@ -1797,6 +3297,82 @@ async function startBreak(
    return;
   }
 
+  // الموظف يبدأ التدخين/العشاء عبر RPC؛ لا يوجد INSERT مباشر من المتصفح.
+  // الفحص هنا للواجهة فقط، أما المنع الحقيقي في PostgreSQL داخل start_break.
+  // قفل عالمي للتدخين والعشاء: إذا أي موظف عنده نفس نوع الاستراحة مفتوحة،
+  // لا يمكن لموظف آخر البدء بها حتى تنتهي. هذا فحص واجهة فقط، والمنع الحقيقي في DB.
+  if((breakType==='smoking' || breakType==='dinner') &&
+     breaksList.some(b => b.break_type===breakType && !b.end_time)){
+   showToast(breakType==='smoking'
+    ? 'استراحة التدخين مستخدمة حالياً من موظف آخر. انتظر حتى تنتهي.'
+    : 'استراحة العشاء مستخدمة حالياً من موظف آخر. انتظر حتى تنتهي.');
+   return;
+  }
+
+  if(currentProfile?.role === 'employee'){
+   if(breakType!=='smoking' && breakType!=='dinner'){
+    showToast('نوع الاستراحة غير متاح للموظف بهذه الطريقة');
+    return;
+   }
+
+   if(breakType==='smoking'){
+     const cooldown=getSmokingCooldown(employeeId);
+     if(cooldown!==null && cooldown>0){
+      showToast(`تنبيه: لم تمر ساعة منذ نهاية التدخينة السابقة. سيُسجل خصم التدخين المبكر (${Number(evaluationPenalties['تدخين قبل مرور ساعة']??2)} نقطة).`);
+     }
+    }
+
+   if(breakType==='dinner'){
+    const dinnerUsed=breaksList.some(
+     b=>Number(b.employee_id)===Number(employeeId) &&
+        b.break_type==='dinner'
+    );
+    if(dinnerUsed){
+     showToast('تم استخدام استراحة العشاء اليوم');
+     return;
+    }
+   }
+
+   const {data,error}=await supabaseClient.rpc('start_break',{p_break_type:breakType});
+   if(error){
+    console.error('EMPLOYEE START BREAK RPC ERROR',error);
+    const msg=String(error.message||'');
+    if(/التدخين|smoking|60|ساعة/i.test(msg)){
+     showToast(msg || 'استراحة التدخين غير متاحة حالياً');
+    }else if(/العشاء|dinner|مرة واحدة|اليوم/i.test(msg)){
+     showToast(msg || 'تم استخدام استراحة العشاء اليوم');
+    }else{
+     showToast(msg || 'تعذر بدء الاستراحة');
+    }
+    return;
+   }
+
+   // start_break returns a breaks row directly (not { break: row }).
+   // Accept both response shapes so the UI updates immediately after RPC success.
+   const row=data?.break || (Array.isArray(data) ? data[0] : null) || (data?.id != null ? data : null);
+   if(data?.work_session) patchWorkSession(data.work_session);
+   if(row) patchBreak(row);
+   renderTable(); updateStats();
+
+   if(realtimeChannel && row){
+    realtimeChannel.send({
+     type:'broadcast',
+     event:'break_fast_update',
+     payload:{eventType:'INSERT',new:row}
+    }).catch(e=>console.warn('Fast break broadcast error:',e));
+   }
+
+   writeActivity(
+    employeeId,
+    employee.name,
+    'بدء استراحة',
+    (row?.allowed_minutes||0)+' دقيقة',
+    BREAK_RULES[breakType].name
+   );
+   showToast('تم بدء الاستراحة');
+   return;
+  }
+
   const previous =
    breaksList.filter(
     b =>
@@ -1804,8 +3380,20 @@ async function startBreak(
      Number(employeeId)
    );
 
+  // الإدارة تستخدم INSERT مباشر، لذلك نعيد نفس القفل هنا لتحسين تجربة المستخدم.
+  // القاعدة نفسها محمية أيضاً بـ trigger في PostgreSQL لمنع أي تجاوز أو سباق متزامن.
+  if((breakType==='smoking' || breakType==='dinner') &&
+     breaksList.some(b => b.break_type===breakType && !b.end_time)){
+   showToast(breakType==='smoking'
+    ? 'استراحة التدخين مستخدمة حالياً من موظف آخر. انتظر حتى تنتهي.'
+    : 'استراحة العشاء مستخدمة حالياً من موظف آخر. انتظر حتى تنتهي.');
+   return;
+  }
+
+  // يسمح باستراحة التدخين أكثر من مرة في اليوم؛ قيد الاستخدام اليومي يخص الأنواع الأخرى فقط.
   if(
    breakType !== 'authorized' &&
+   breakType !== 'smoking' &&
    previous.some(
     b=>b.break_type===breakType
    )
@@ -1816,18 +3404,13 @@ async function startBreak(
    return;
   }
 
+  // التدخين قبل مرور ساعة تنبيه فقط؛ لا يمنع بدء الاستراحة.
   if(breakType==='smoking'){
-
-   const cooldown =
-    getSmokingCooldown(employeeId);
-
+   const cooldown=getSmokingCooldown(employeeId);
    if(cooldown!==null && cooldown>0){
-
     showToast(
-     `تبقى ${cooldown} دقيقة قبل استراحة التدخين التالية`
+     `تنبيه: لم تمر ساعة منذ نهاية التدخينة السابقة. الخصم المتوقع ${Number(evaluationPenalties['تدخين قبل مرور ساعة']??2)} نقطة.`
     );
-
-    return;
    }
   }
 
@@ -1878,6 +3461,12 @@ async function startBreak(
   const now =
    new Date().toISOString();
 
+  const workClose = await closeWorkSession(employeeId,now);
+  if(workClose.error){
+   showToast('تعذر إيقاف وقت العمل قبل الاستراحة');
+   return;
+  }
+
   const {
    data,
    error
@@ -1901,6 +3490,11 @@ async function startBreak(
 
    console.error(error);
 
+   const attendance=getAttendance(employeeId);
+   if(attendance?.present){
+    await openWorkSession(employeeId,attendance.id,new Date().toISOString()).catch(()=>{});
+   }
+
    showToast(
     'تعذر بدء الاستراحة'
    );
@@ -1912,6 +3506,16 @@ async function startBreak(
   renderTable();
   updateStats();
 
+  // إرسال تحديث مباشر لباقي الواجهات فور نجاح حفظ الاستراحة،
+  // حتى يظهر البريك عند المسؤول بدون انتظار postgres_changes.
+  if(realtimeChannel){
+   realtimeChannel.send({
+    type:'broadcast',
+    event:'break_fast_update',
+    payload:{eventType:'INSERT',new:data}
+   }).catch(e=>console.warn('Fast break broadcast error:',e));
+  }
+
   writeActivity(
    employeeId,
    employee.name,
@@ -1920,7 +3524,7 @@ async function startBreak(
    breakType==='authorized'
     ? 'استراحة مصرح بها'
     : BREAK_RULES[breakType].name
-  ).catch(()=>{});
+  );
 
   showToast(
    'تم بدء الاستراحة'
@@ -1949,6 +3553,53 @@ async function finishBreak(breakId){
 
  if(currentProfile?.role === 'employee' && Number(active.employee_id) !== Number(currentProfile.employee_id)){
   showToast('لا يمكنك إنهاء استراحة موظف آخر');
+  return;
+ }
+
+ if(currentProfile?.role === 'employee'){
+  const employee=employeesList.find(e=>Number(e.id)===Number(active.employee_id));
+  const {data,error}=await supabaseClient.rpc('end_break',{p_break_id:Number(breakId)});
+  if(error){
+   console.error('EMPLOYEE FINISH BREAK RPC ERROR',error);
+   showToast(error.message||'تعذر إنهاء الاستراحة');
+   return;
+  }
+  // end_break returns JSON {success, break_id, actual_minutes, overage_minutes},
+  // not {break: row}. Reload the authoritative row, with a local fallback.
+  let row=null;
+  const {data:closedRow,error:closedRowError}=await supabaseClient
+   .from('breaks')
+   .select('*')
+   .eq('id',Number(breakId))
+   .single();
+  if(!closedRowError && closedRow){
+   row=closedRow;
+  }else{
+   const endedAt=new Date().toISOString();
+   row={
+    ...active,
+    end_time:endedAt,
+    actual_minutes:data?.actual_minutes ?? active.actual_minutes ?? 0,
+    overage_minutes:data?.overage_minutes ?? active.overage_minutes ?? 0
+   };
+  }
+  patchBreak(row);
+  renderTable(); updateStats();
+  if(realtimeChannel && row){
+   realtimeChannel.send({
+    type:'broadcast',
+    event:'break_fast_update',
+    payload:{eventType:'UPDATE',new:row}
+   }).catch(e=>console.warn('Fast break return broadcast error:',e));
+  }
+  writeActivity(
+   active.employee_id,
+   employee?.name||'',
+   'إنهاء استراحة',
+   (row?.actual_minutes??0)+' دقيقة',
+   (row?.overage_minutes||0)>0 ? 'تم إنهاء الاستراحة مع تجاوز' : 'تم إنهاء الاستراحة'
+  );
+  showToast('تم إنهاء الاستراحة');
   return;
  }
 
@@ -2000,7 +3651,38 @@ async function finishBreak(breakId){
 
  }
 
- active.end_time=now; active.actual_minutes=actual; active.overage_minutes=overage; patchBreak(active); renderTable(); updateStats();
+ active.end_time=now; active.actual_minutes=actual; active.overage_minutes=overage; patchBreak(active);
+
+ // تحديث فوري محلياً + إرسال العودة للمسؤول قبل أي عمليات إضافية.
+ renderTable(); updateStats();
+ if(realtimeChannel){
+  realtimeChannel.send({
+   type:'broadcast',
+   event:'break_fast_update',
+   payload:{eventType:'UPDATE',new:active}
+  }).catch(e=>console.warn('Fast break return broadcast error:',e));
+ }
+
+ // يجب فتح جلسة العمل قبل اعتماد انتهاء البريك نهائياً؛ وإلا سيبقى الموظف حاضرًا بلا وقت عمل فعلي.
+ const attendance=getAttendance(active.employee_id);
+ if(attendance?.present){
+  const reopened=await openWorkSession(active.employee_id,attendance.id,now);
+  if(reopened?.error){
+   console.error('FINISH BREAK WORK SESSION ERROR',reopened.error);
+
+   // تراجع عن إنهاء البريك حتى لا تصبح حالة الموظف غير متناسقة.
+   const {data:rollbackBreak,error:rollbackError}=await supabaseClient.from('breaks')
+    .update({end_time:null,actual_minutes:null,overage_minutes:null})
+    .eq('id',active.id).select().single();
+   if(rollbackError) console.error('FINISH BREAK ROLLBACK ERROR',rollbackError);
+   if(rollbackBreak) patchBreak(rollbackBreak);
+   else { active.end_time=null; active.actual_minutes=null; active.overage_minutes=null; patchBreak(active); }
+   renderTable(); updateStats();
+   showToast('تعذر إعادة بدء وقت العمل، وتم إبقاء الاستراحة مفتوحة');
+   return;
+  }
+ }
+
  writeActivity(active.employee_id,employee?.name||'','إنهاء استراحة',actual+' دقيقة',overage>0?`تجاوز ${overage} دقيقة`:'ضمن الوقت المحدد').catch(()=>{});
 
  showToast(
@@ -2055,46 +3737,12 @@ function getSmokingCooldown(employeeId){
 ========================================================= */
 
 function complianceScore(employee){
-
- if(
-  employee.compliance_override !== null &&
-  employee.compliance_override !== undefined &&
-  Number.isFinite(
-   Number(employee.compliance_override)
-  )
- ){
-
-  return Math.max(
-   0,
-   Math.min(
-    100,
-    Math.round(
-     Number(employee.compliance_override)
-    )
-   )
-  );
-
- }
-
- const totalOverage =
-  breaksList
-   .filter(
-    b =>
-     Number(b.employee_id)===
-     Number(employee.id)
-   )
-   .reduce(
-    (sum,b)=>
-     sum+Number(b.overage_minutes||0),
-    0
-   );
-
- return Math.max(
-  0,
-  Math.round(100-totalOverage)
- );
-
+ const penalty=(currentEvaluationViolations||[])
+  .filter(v=>Number(v.employee_id)===Number(employee.id) && String(v.status||'active').toLowerCase()!=='cancelled')
+  .reduce((sum,v)=>sum+Math.max(0,Number(v.points||0)),0);
+ return Math.max(0,Math.min(100,100-penalty));
 }
+
 
 
 function openComplianceModal(employeeId){
@@ -2102,7 +3750,7 @@ function openComplianceModal(employeeId){
  if(!isAdmin()){
 
   showToast(
-   'تعديل نسبة الالتزام متاح للـ Admin فقط'
+   'تعديل نسبة التقييم متاح للـ Admin فقط'
   );
 
   return;
@@ -2245,7 +3893,7 @@ async function saveCompliance(){
   console.error(error);
 
   showToast(
-   'تعذر حفظ نسبة الالتزام'
+   'تعذر حفظ نسبة التقييم'
   );
 
   return;
@@ -2253,10 +3901,10 @@ async function saveCompliance(){
  }
 
  await writeManagementLog(
-  'تعديل نسبة الالتزام',
+  'تعديل نسبة التقييم',
   employeeId,
   employee.name,
-  `تم تعديل نسبة الالتزام إلى ${Math.round(value)}%. السبب: ${note}`
+  `تم تعديل نسبة التقييم إلى ${Math.round(value)}%. السبب: ${note}`
  );
 
  await writeActivity(
@@ -2272,7 +3920,7 @@ async function saveCompliance(){
  await loadAllData();
 
  showToast(
-  'تم حفظ نسبة الالتزام'
+  'تم حفظ نسبة التقييم'
  );
 
 }
@@ -2281,6 +3929,18 @@ async function saveCompliance(){
 /* =========================================================
    RENDER TABLE
 ========================================================= */
+
+function getTodayBreakOverage(employeeId){
+ return breaksList
+  .filter(b=>Number(b.employee_id)===Number(employeeId))
+  .reduce((sum,b)=>{
+   const allowed=Number(b.allowed_minutes||0);
+   const actual=b.end_time
+    ? Number(b.actual_minutes||0)
+    : minutesBetween(b.start_time,new Date());
+   return sum+Math.max(0,actual-allowed);
+  },0);
+}
 
 function renderTable(){
 
@@ -2344,6 +4004,15 @@ function renderTable(){
     </span>
    `;
 
+  }
+
+  const todayOverage=getTodayBreakOverage(employee.id);
+  if(todayOverage>0){
+   status+=`
+    <div style="margin-top:6px">
+     <span class="report-alert">🚨 تجاوز البريك ${todayOverage} دقيقة</span>
+    </div>
+   `;
   }
 
   let breakTimer='—';
@@ -2483,11 +4152,17 @@ function renderTable(){
 
   }
 
+  const rowBreakClass=activeBreak ? `employee-break-row break-${activeBreak.break_type||'authorized'}` : '';
+
   return `
-   <tr>
+   <tr class="${rowBreakClass}">
 
     <td>
+     ${employee.photo_url
+       ? `<img class="employee-photo" src="${esc(employee.photo_url)}" alt="${esc(employee.name)}">`
+       : `<span class="employee-photo-placeholder">👤</span>`}
      <b>${esc(employee.name)}</b>
+     ${isManagement()?`<div class="photo-actions"><button class="btn-blue" onclick="changeEmployeePhoto(${employee.id})">📷 صورة</button>${employee.photo_url?`<button class="btn-red" onclick="removeEmployeePhoto(${employee.id})">حذف الصورة</button>`:''}</div>`:''}
     </td>
 
     <td class="status">
@@ -2500,6 +4175,10 @@ function renderTable(){
        ? formatTime(attendance.check_in)
        : '—'
      }
+    </td>
+
+    <td>
+     <span class="work-timer" id="workTimer_${employee.id}">${minutesToClock(getTodayActualWorkMinutes(employee.id))}</span>
     </td>
 
     <td>
@@ -2543,6 +4222,67 @@ function renderTable(){
 
 
 /* =========================================================
+   EMPLOYEE PHOTOS
+========================================================= */
+
+function changeEmployeePhoto(employeeId){
+ if(!isManagement()) return;
+ const employee=allEmployeesList.find(e=>Number(e.id)===Number(employeeId));
+ if(!employee) return;
+ const input=document.createElement('input');
+ input.type='file'; input.accept='image/*';
+ input.onchange=async()=>{
+  const file=input.files?.[0];
+  if(!file) return;
+  if(file.size>8*1024*1024) return showToast('حجم الصورة يجب أن يكون أقل من 8MB');
+  try{
+   const dataUrl=await compressEmployeePhoto(file);
+   const {error}=await supabaseClient.from('employees').update({photo_url:dataUrl}).eq('id',employeeId);
+   if(error){console.error(error);return showToast('تعذر حفظ صورة الموظف. أضف عمود photo_url أولاً');}
+   employee.photo_url=dataUrl;
+   const local=employeesList.find(e=>Number(e.id)===Number(employeeId)); if(local) local.photo_url=dataUrl;
+   renderTable();
+   writeManagementLog('تغيير صورة موظف',employeeId,employee.name,'تم تحديث صورة الموظف').catch(()=>{});
+   showToast('تم حفظ صورة الموظف');
+  }catch(e){console.error(e);showToast('تعذر معالجة الصورة');}
+ };
+ input.click();
+}
+
+function compressEmployeePhoto(file){
+ return new Promise((resolve,reject)=>{
+  const reader=new FileReader();
+  reader.onload=()=>{
+   const img=new Image();
+   img.onload=()=>{
+    const max=420;
+    const scale=Math.min(1,max/Math.max(img.width,img.height));
+    const canvas=document.createElement('canvas');
+    canvas.width=Math.max(1,Math.round(img.width*scale));
+    canvas.height=Math.max(1,Math.round(img.height*scale));
+    const ctx=canvas.getContext('2d');
+    ctx.drawImage(img,0,0,canvas.width,canvas.height);
+    resolve(canvas.toDataURL('image/jpeg',0.78));
+   };
+   img.onerror=reject; img.src=reader.result;
+  };
+  reader.onerror=reject; reader.readAsDataURL(file);
+ });
+}
+
+async function removeEmployeePhoto(employeeId){
+ if(!isManagement()) return;
+ const employee=allEmployeesList.find(e=>Number(e.id)===Number(employeeId));
+ if(!employee || !confirm(`حذف صورة الموظف ${employee.name}؟`)) return;
+ const {error}=await supabaseClient.from('employees').update({photo_url:null}).eq('id',employeeId);
+ if(error){console.error(error);return showToast('تعذر حذف الصورة');}
+ employee.photo_url=null;
+ const local=employeesList.find(e=>Number(e.id)===Number(employeeId)); if(local) local.photo_url=null;
+ renderTable();
+ showToast('تم حذف صورة الموظف');
+}
+
+/* =========================================================
    DEACTIVATE
 ========================================================= */
 
@@ -2566,40 +4306,30 @@ async function deleteEmployeeDirect(employeeId){
  if(!isAdmin()) return showToast('حذف الموظف متاح للمسؤول فقط');
  const employee=allEmployeesList.find(e=>Number(e.id)===Number(employeeId));
  if(!employee) return showToast('الموظف غير موجود');
- if(!confirm(`حذف الموظف ${employee.name} نهائياً؟\nسيتم حذف سجلات الحضور والاستراحات والنشاط والحساب المرتبط. لا يمكن التراجع.`)) return;
+ if(!confirm(`حذف الموظف ${employee.name} نهائياً؟\nسيتم حذف سجلاته والحساب المرتبط به من النظام وSupabase Auth. لا يمكن التراجع.`)) return;
  const id=Number(employeeId);
  try{
-  const tables=[
-   ['permission_requests','employee_id'],
-   ['activity_logs','employee_id'],
-   ['management_logs','employee_id'],
-   ['breaks','employee_id'],
-   ['attendance','employee_id']
-  ];
-  for(const [table,column] of tables){
-   const {error}=await supabaseClient.from(table).delete().eq(column,id);
-   if(error) throw new Error(`${table}: ${error.message}`);
+  const {data,error}=await supabaseClient.functions.invoke('delete-employee-user',{body:{employee_id:id}});
+  if(error||data?.error){
+   console.error(error||data?.error);
+   return showToast(data?.error||'تعذر حذف الموظف والحساب');
   }
-  const {data:profiles,error:profileReadError}=await supabaseClient.from('profiles').select('id').eq('employee_id',id);
-  if(profileReadError) throw new Error(`profiles: ${profileReadError.message}`);
-  if(profiles?.length){
-   const ids=profiles.map(x=>x.id).filter(Boolean);
-   const {error:profileDeleteError}=await supabaseClient.from('profiles').delete().in('id',ids);
-   if(profileDeleteError) throw new Error(`profiles: ${profileDeleteError.message}`);
-  }
-  const {error:employeeDeleteError}=await supabaseClient.from('employees').delete().eq('id',id);
-  if(employeeDeleteError) throw new Error(`employees: ${employeeDeleteError.message}`);
   allEmployeesList=allEmployeesList.filter(e=>Number(e.id)!==id);
   employeesList=employeesList.filter(e=>Number(e.id)!==id);
   attendanceList=attendanceList.filter(a=>Number(a.employee_id)!==id);
   breaksList=breaksList.filter(b=>Number(b.employee_id)!==id);
   populateEmployeeSelects(); renderTable(); updateStats();
-  if(isAdmin()) loadAccountProfiles();
-  showToast('تم حذف الموظف نهائياً');
+  if(isAdmin()) await loadAccountProfiles();
+  showToast('تم حذف الموظف والحساب نهائياً');
  }catch(error){
   console.error('DELETE EMPLOYEE ERROR',error);
-  showToast('تعذر حذف الموظف: '+(error?.message||error));
+  showToast('تعذر حذف الموظف والحساب: '+(error?.message||error));
  }
+}
+
+function baghdadDayBounds(){
+ const day=today();
+ return {day,start:baghdadDayStartUtc(day),end:baghdadNextDayStartUtc(day)};
 }
 
 async function resetEmployeeBreaks(employeeId){
@@ -2607,9 +4337,10 @@ async function resetEmployeeBreaks(employeeId){
  const employee=allEmployeesList.find(e=>Number(e.id)===Number(employeeId));
  if(!employee) return;
  if(!confirm(`تصفير جميع استراحات الموظف ${employee.name} لليوم؟`)) return;
- const {error}=await supabaseClient.from('breaks').delete().eq('employee_id',employeeId).gte('start_time',today()+'T00:00:00');
+ const {start,end,day}=baghdadDayBounds();
+ const {error}=await supabaseClient.from('breaks').delete().eq('employee_id',employeeId).gte('start_time',start).lt('start_time',end);
  if(error){ console.error(error); return showToast('تعذر تصفير الاستراحات: '+error.message); }
- breaksList=breaksList.filter(b=>!(Number(b.employee_id)===Number(employeeId) && String(b.start_time||'').startsWith(today())));
+ breaksList=breaksList.filter(b=>!(Number(b.employee_id)===Number(employeeId) && b.start_time && new Date(b.start_time).getTime()>=Date.parse(start) && new Date(b.start_time).getTime()<Date.parse(end)));
  renderTable(); updateStats();
  writeManagementLog('تصفير الاستراحات',employeeId,employee.name,'تم تصفير جميع استراحات اليوم').catch(()=>{});
  showToast(`تم تصفير استراحات ${employee.name}`);
@@ -2618,12 +4349,51 @@ async function resetEmployeeBreaks(employeeId){
 async function resetAllEmployeeBreaks(){
  if(!isManagement()) return showToast('ليس لديك صلاحية تصفير الاستراحات');
  if(!confirm('تصفير جميع استراحات جميع الموظفين لليوم؟')) return;
- const {error}=await supabaseClient.from('breaks').delete().gte('start_time',today()+'T00:00:00');
+ const {start,end,day}=baghdadDayBounds();
+ const {error}=await supabaseClient.from('breaks').delete().gte('start_time',start).lt('start_time',end);
  if(error){ console.error(error); return showToast('تعذر تصفير الاستراحات: '+error.message); }
- breaksList=breaksList.filter(b=>!String(b.start_time||'').startsWith(today()));
+ breaksList=breaksList.filter(b=>!b.start_time || new Date(b.start_time).getTime()<Date.parse(start) || new Date(b.start_time).getTime()>=Date.parse(end));
  renderTable(); updateStats();
  writeManagementLog(null,null,'تصفير الاستراحات','تم تصفير جميع استراحات جميع الموظفين لليوم').catch(()=>{});
  showToast('تم تصفير استراحات الجميع');
+}
+
+async function resetAllEmployeeWorkTimes(){
+ if(!isManagement()) return showToast('ليس لديك صلاحية تصفير أوقات العمل');
+ if(!confirm('⚠️ سيتم تصفير أوقات العمل الفعلية والاستراحات والحضور التجريبي لليوم لجميع الموظفين.\n\nلن يتم حذف الموظفين أو الحسابات أو إعدادات التقييم.\n\nهل تريد المتابعة؟')) return;
+ try{
+  const {error}=await supabaseClient.rpc('reset_work_times_today',{p_performed_by:currentUser.id});
+  if(error) throw error;
+  attendanceList=[];
+  workSessionsList=[];
+  breaksList=[];
+  await loadPermissionRequests();
+  renderPermissionRequests();
+  renderTable(); updateStats();
+  showToast('تم تصفير أوقات العمل والاستراحات بنجاح');
+ }catch(error){
+  console.error('RESET WORK TIMES ERROR',error);
+  showToast('تعذر تصفير أوقات العمل: '+(error?.message||error));
+ }
+}
+
+async function resetAllTestData(){
+ if(!isManagement()) return showToast('ليس لديك صلاحية تصفير بيانات التجربة');
+ if(!confirm('⚠️ سيتم حذف بيانات التشغيل التجريبية: الحضور والاستراحات والمخالفات والأذونات وجلسات العمل وسجلات النشاط والإدارة.\n\nلن يتم حذف الموظفين أو حساباتهم أو إعدادات الخصومات.\n\nهل تريد المتابعة؟')) return;
+ const typed=prompt('للتأكيد النهائي اكتب كلمة: تصفير');
+ if(typed!=='تصفير') return showToast('تم إلغاء عملية التصفير');
+ const {error}=await supabaseClient.rpc('reset_test_data',{p_performed_by:currentUser.id});
+ if(error){
+  console.error(error);
+  return showToast('تعذر تصفير بيانات التجربة: '+(error.message||''));
+ }
+ attendanceList=[];
+ breaksList=[];
+ permissionRequests=[];
+ workSessionsList=[];
+ weeklyReportRows=[];
+ showToast('تم تصفير بيانات التجربة بنجاح وتم تسجيل العملية في سجل الإدارة');
+ setTimeout(()=>location.reload(),700);
 }
 
 
@@ -2631,6 +4401,118 @@ async function resetAllEmployeeBreaks(){
 /* =========================================================
    STATS
 ========================================================= */
+
+
+function dashboardMinutesToClock(minutes){
+ const m=Math.max(0,Math.floor(Number(minutes)||0));
+ const h=Math.floor(m/60);
+ const min=m%60;
+ return String(h).padStart(2,'0')+':'+String(min).padStart(2,'0');
+}
+
+function updateCustomDashboard(){
+ const total=employeesList.length;
+
+ const present=employeesList.filter(e=>{
+  const a=getAttendance(e.id);
+  return !!a?.present;
+ }).length;
+
+ const inBreak=employeesList.filter(e=>getActiveBreak(e.id)).length;
+ const absent=Math.max(0,total-present);
+
+ const totalWork=employeesList.reduce(
+  (sum,e)=>sum+getTodayActualWorkMinutes(e.id),0
+ );
+
+ const totalBreak=employeesList.reduce((sum,e)=>{
+  return sum+breaksList
+   .filter(b=>Number(b.employee_id)===Number(e.id))
+   .reduce((s,b)=>{
+    const end=b.end_time?new Date(b.end_time):new Date();
+    return s+minutesBetween(b.start_time,end);
+   },0);
+ },0);
+
+ const breakCount=breaksList.length;
+ const avgWork=total?Math.round(totalWork/total):0;
+ const avgBreak=breakCount?Math.round(totalBreak/breakCount):0;
+
+ const rated=employeesList.map(e=>Number(complianceScore(e))).filter(n=>Number.isFinite(n));
+ const avgRating=rated.length?Math.round(rated.reduce((a,b)=>a+b,0)/rated.length):0;
+
+ const workPercent=Math.min(100,Math.round((totalWork/Math.max(1,total*480))*100));
+ const attendancePercent=total?Math.round((present/total)*100):0;
+ const compliancePercent=avgRating;
+ const breakPercent=total?Math.min(100,Math.round((inBreak/total)*100)):0;
+
+ const set=(id,value)=>{
+  const el=document.getElementById(id);
+  if(el) el.innerText=value;
+ };
+
+ set('dashTotalEmployees',total);
+ set('dashTotalWork',dashboardMinutesToClock(totalWork));
+ set('dashTotalBreak',dashboardMinutesToClock(totalBreak));
+ set('dashAverageRating',avgRating+'%');
+ set('dashPresent',present);
+ set('dashBreakEmployees',inBreak);
+ set('dashAbsent',absent);
+ set('dashAverageWork',dashboardMinutesToClock(avgWork));
+ set('dashWorkPercent',workPercent+'%');
+ set('dashBreakCount',breakCount);
+ set('dashAverageBreak',dashboardMinutesToClock(avgBreak));
+ set('dashAttendancePercent',attendancePercent+'%');
+ set('dashWorkPercentChart',workPercent+'%');
+ set('dashCompliancePercent',compliancePercent+'%');
+ set('dashBreakPercent',breakPercent+'%');
+
+ const setBar=(id,value)=>{
+  const el=document.getElementById(id);
+  if(el) el.style.width=Math.max(0,Math.min(100,value))+'%';
+ };
+ setBar('dashAttendancePercentBar',attendancePercent);
+ setBar('dashWorkPercentBar',workPercent);
+ setBar('dashCompliancePercentBar',compliancePercent);
+ setBar('dashBreakPercentBar',breakPercent);
+
+ const bar=document.getElementById('dashWorkProgress');
+ if(bar) bar.style.width=workPercent+'%';
+
+ // جدول حالة الموظفين داخل لوحة التحكم فقط.
+ const statusBody=document.getElementById('dashboardEmployeeStatusBody');
+ if(statusBody){
+  const esc=value=>String(value??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+  if(!employeesList.length){
+   statusBody.innerHTML='<tr><td colspan="8">لا يوجد موظفون مسجلون.</td></tr>';
+  }else{
+   statusBody.innerHTML=employeesList.map((employee,index)=>{
+    const attendance=getAttendance(employee.id);
+    const activeBreak=getActiveBreak(employee.id);
+    let label,cls,rowCls,breakLabel='—',breakDuration='—';
+    if(activeBreak){
+     label='في استراحة'; cls='dashboard-status-break';
+     const breakType=String(activeBreak.break_type||'authorized').toLowerCase();
+     rowCls='status-row-break break-'+(['smoking','dinner','emergency','authorized'].includes(breakType)?breakType:'authorized');
+     breakLabel=({smoking:'تدخين',dinner:'طعام',emergency:'طارئة',authorized:'مصرّح بها'}[breakType]||activeBreak.break_type||'استراحة');
+     breakDuration=dashboardMinutesToClock(minutesBetween(activeBreak.start_time,new Date()));
+    }else if(attendance?.present){
+     label='متواجد'; cls='dashboard-status-present'; rowCls='status-row-present';
+    }else{
+     label='غير متواجد'; cls='dashboard-status-absent'; rowCls='status-row-absent';
+    }
+    const photo=employee.photo_url||employee.photoUrl||'';
+    const photoHtml=photo?`<img class="dashboard-employee-photo" src="${esc(photo)}" alt="${esc(employee.name||'الموظف')}">`:'<span class="dashboard-employee-photo">👤</span>';
+    const checkIn=attendance?.check_in?formatTime(attendance.check_in):'—';
+    const workDuration=dashboardMinutesToClock(getTodayActualWorkMinutes(employee.id));
+    return `<tr class="${rowCls}"><td>${index+1}</td><td>${photoHtml}</td><td><strong>${esc(employee.name||'—')}</strong></td><td><span class="dashboard-status-pill ${cls}">${label}</span></td><td>${esc(checkIn)}</td><td>${esc(breakLabel)}</td><td>${esc(breakDuration)}</td><td>${esc(workDuration)}</td></tr>`;
+   }).join('');
+  }
+ }
+ const updated=document.getElementById('dashboardStatusUpdatedAt');
+ if(updated) updated.textContent='آخر تحديث: '+new Date().toLocaleTimeString('ar-IQ',{timeZone:'Asia/Baghdad',hour:'2-digit',minute:'2-digit',second:'2-digit'});
+}
+
 
 function updateStats(){
 
@@ -2677,6 +4559,8 @@ function updateStats(){
   'outEmp'
  ).innerText=out;
 
+ updateCustomDashboard();
+
 }
 
 
@@ -2684,7 +4568,21 @@ function updateStats(){
    TIMERS
 ========================================================= */
 
+function minutesToClock(minutes){
+ const totalSeconds=Math.max(0,Math.floor(Number(minutes||0)*60));
+ const h=Math.floor(totalSeconds/3600);
+ const m=Math.floor((totalSeconds%3600)/60);
+ const sec=totalSeconds%60;
+ return [h,m,sec].map((v,i)=>i===0?String(v).padStart(2,'0'):String(v).padStart(2,'0')).join(':');
+}
+
 function updateTimers(){
+
+ employeesList.forEach(employee=>{
+  const el=document.getElementById('workTimer_'+employee.id);
+  if(!el) return;
+  el.innerText=minutesToClock(getTodayActualWorkMinutes(employee.id));
+ });
 
  breaksList
   .filter(b=>!b.end_time)
@@ -2736,7 +4634,13 @@ async function writeActivity(
  details
 ){
 
+ if(!currentUser?.id){
+  console.warn('Activity log skipped: no authenticated user');
+  return {error:new Error('لا يوجد مستخدم مسجل الدخول')};
+ }
+
  const {
+  data,
   error
  } =
  await supabaseClient
@@ -2747,20 +4651,160 @@ async function writeActivity(
    action:action,
    duration:duration,
    details:details,
-   performed_by:
-    currentUser?.id||null
-  });
+   performed_by:currentUser.id
+  })
+  .select()
+  .single();
 
- if(error)
+ if(error){
+
   console.error(
    'Activity log error:',
    error
   );
 
+  showToast(
+   'تعذر تسجيل النشاط: ' + (error.message || 'خطأ غير معروف')
+  );
+
+  return {error};
+ }
+
+ console.log('Activity log saved:', data);
+
+ return {data};
+}
+
+
+
+function toggleActivityLog(){
+
+ const content =
+  document.getElementById('activityLogContent');
+
+ const button =
+  document.getElementById('activityLogToggleBtn');
+
+ if(!content || !button) return;
+
+ const isHidden =
+  content.style.display === 'none';
+
+ if(isHidden){
+
+  content.style.display = '';
+
+  button.innerText =
+   'إخفاء سجل النشاط';
+
+  localStorage.setItem(
+   'activityLogHidden',
+   '0'
+  );
+
+ }else{
+
+  content.style.display = 'none';
+
+  button.innerText =
+   'إظهار سجل النشاط';
+
+  localStorage.setItem(
+   'activityLogHidden',
+   '1'
+  );
+
+ }
+
+}
+
+
+function restoreActivityLogVisibility(){
+
+ const content =
+  document.getElementById('activityLogContent');
+
+ const button =
+  document.getElementById('activityLogToggleBtn');
+
+ if(!content || !button) return;
+
+ const hidden =
+  localStorage.getItem(
+   'activityLogHidden'
+  ) === '1';
+
+ if(hidden){
+
+  content.style.display = 'none';
+
+  button.innerText =
+   'إظهار سجل النشاط';
+
+ }else{
+
+  content.style.display = '';
+
+  button.innerText =
+   'إخفاء سجل النشاط';
+
+ }
+
+}
+
+
+async function cleanupOldActivityLogs(){
+
+ if(!isManagement()) return true;
+
+ try{
+
+  const cutoff = new Date(
+   Date.now() - (30 * 24 * 60 * 60 * 1000)
+  );
+
+  const {
+   error
+  } =
+  await supabaseClient
+   .from('activity_logs')
+   .delete()
+   .lt(
+    'created_at',
+    cutoff.toISOString()
+   );
+
+  if(error){
+   console.error(
+    'Activity log cleanup error:',
+    error
+   );
+   return false;
+  }
+
+  console.log(
+   'Activity logs older than 30 days deleted.'
+  );
+
+  return true;
+
+ }catch(error){
+
+  console.error(
+   'Activity log cleanup exception:',
+   error
+  );
+
+  return false;
+ }
+
 }
 
 
 async function loadActivityLogs(){
+
+ // حذف السجلات الأقدم من 30 يوم قبل عرض السجل.
+ await cleanupOldActivityLogs();
 
  const {
   data,
@@ -2777,7 +4821,23 @@ async function loadActivityLogs(){
 
  if(error){
 
-  console.error(error);
+  console.error(
+   'Load activity logs error:',
+   error
+  );
+
+  const tbody =
+   document.getElementById('activityLogsBody');
+
+  if(tbody){
+   tbody.innerHTML=`
+    <tr>
+     <td colspan="5">
+      تعذر تحميل سجل النشاط
+     </td>
+    </tr>
+   `;
+  }
 
   return;
 
@@ -2787,6 +4847,8 @@ async function loadActivityLogs(){
   document.getElementById(
    'activityLogsBody'
   );
+
+ if(!tbody) return;
 
  if(!data?.length){
 
@@ -2815,6 +4877,16 @@ async function loadActivityLogs(){
 
 }
 
+
+
+setTimeout(()=>{
+ restoreActivityLogVisibility();
+},300);
+
+/* تنظيف سجل النشاط تلقائياً عند تشغيل النظام */
+setTimeout(()=>{
+ cleanupOldActivityLogs();
+},1000);
 
 /* =========================================================
    MANAGEMENT LOGS
@@ -2850,6 +4922,85 @@ async function writeManagementLog(
    error
   );
 
+}
+
+
+async function deleteAllManagementLogs(){
+
+ if(!isManagement())
+  return;
+
+ if(!confirm('⚠️ تحذير: هل أنت متأكد من حذف جميع سجلات الإدارة لجميع الأيام؟ لا يمكن التراجع عن هذا الإجراء.'))
+  return;
+
+ const {
+  error
+ } =
+ await supabaseClient
+  .from('management_logs')
+  .delete()
+  .not('id','is',null);
+
+ if(error){
+
+  console.error(
+   'Delete all management logs error:',
+   error
+  );
+
+  showToast(
+   'تعذر حذف جميع سجلات الإدارة'
+  );
+
+  return;
+ }
+
+ await loadManagementLogs();
+
+ showToast(
+  'تم حذف جميع سجلات الإدارة'
+ );
+}
+
+
+async function deleteTodayManagementLogs(){
+
+ if(!isManagement())
+  return;
+
+ if(!confirm('هل تريد حذف جميع سجلات الإدارة الخاصة باليوم الحالي؟'))
+  return;
+
+ const {start,end}=baghdadDayBounds();
+
+ const {
+  error
+ } =
+ await supabaseClient
+  .from('management_logs')
+  .delete()
+  .gte('created_at',start.toISOString())
+  .lt('created_at',end.toISOString());
+
+ if(error){
+
+  console.error(
+   'Delete today management logs error:',
+   error
+  );
+
+  showToast(
+   'تعذر حذف سجلات اليوم'
+  );
+
+  return;
+ }
+
+ await loadManagementLogs();
+
+ showToast(
+  'تم حذف سجلات الإدارة الخاصة باليوم'
+ );
 }
 
 
@@ -2980,6 +5131,87 @@ function renderPermissionRequests(){
  }).join('');
 }
 
+async function deleteTodayPermissionRequests(){
+
+ if(!isManagement())
+  return;
+
+ if(!confirm('هل تريد حذف جميع طلبات الأذونات الخاصة باليوم الحالي؟'))
+  return;
+
+ const {start,end}=baghdadDayBounds();
+
+ const {
+  error
+ } =
+ await supabaseClient
+  .from('permission_requests')
+  .delete()
+  .gte('created_at',start.toISOString())
+  .lt('created_at',end.toISOString());
+
+ if(error){
+
+  console.error(
+   'Delete today permission requests error:',
+   error
+  );
+
+  showToast(
+   'تعذر حذف طلبات اليوم'
+  );
+
+  return;
+ }
+
+ await loadPermissionRequests();
+ renderPermissionRequests();
+
+ showToast(
+  'تم حذف طلبات الأذونات الخاصة باليوم'
+ );
+}
+
+
+async function deleteAllPermissionRequests(){
+
+ if(!isManagement())
+  return;
+
+ if(!confirm('⚠️ تحذير: هل أنت متأكد من حذف جميع طلبات الأذونات لجميع الأيام؟ لا يمكن التراجع عن هذا الإجراء.'))
+  return;
+
+ const {
+  error
+ } =
+ await supabaseClient
+  .from('permission_requests')
+  .delete()
+  .not('id','is',null);
+
+ if(error){
+
+  console.error(
+   'Delete all permission requests error:',
+   error
+  );
+
+  showToast(
+   'تعذر حذف جميع طلبات الأذونات'
+  );
+
+  return;
+ }
+
+ await loadPermissionRequests();
+ renderPermissionRequests();
+
+ showToast(
+  'تم حذف جميع طلبات الأذونات'
+ );
+}
+
+
 async function submitPermissionRequest(){
  if(currentProfile?.role!=='employee' || !currentProfile.employee_id) return;
  const type=document.getElementById('permissionType').value;
@@ -2994,74 +5226,43 @@ async function submitPermissionRequest(){
 
 async function updatePermissionRequest(id,status){
  if(!isManagement()) return;
-
- const r =
-  permissionRequests.find(
-   x=>Number(x.id)===Number(id)
-  );
-
+ const r=permissionRequests.find(x=>Number(x.id)===Number(id));
  if(!r) return;
+ if(status==='rejected' && !confirm('هل تريد رفض طلب الإذن؟')) return;
 
- if(status==='rejected' &&
-    !confirm('هل تريد رفض طلب الإذن؟'))
-  return;
+ // الموافقة على الطارئة تتم داخل Database Transaction واحدة:
+ // قفل الطلب + التحقق من الحضور + إغلاق جلسة العمل + إنشاء البريك + تحديث الطلب.
+ if(status==='approved' && r.request_type==='استراحة طارئة'){
+  try{
+   const {data,error}=await supabaseClient.rpc('approve_emergency_break',{p_request_id:Number(id)});
+   if(error || data?.error){
+    console.error('EMERGENCY APPROVAL RPC ERROR',error||data?.error);
+    return showToast(data?.error||error?.message||'تعذر الموافقة على استراحة الطوارئ');
+   }
+   const breakRow=data?.break || data?.break_data || null;
+   if(breakRow?.id) patchBreak(breakRow);
 
- if(
-  status==='approved' &&
-  r.request_type==='استراحة طارئة'
- ){
-
-  const attendance =
-   getAttendance(r.employee_id);
-
-  if(!attendance?.present){
-   showToast('لا يمكن الموافقة: الموظف غير مسجل حضور');
+   const request=permissionRequests.find(x=>Number(x.id)===Number(id));
+   if(request){
+    request.status='approved';
+    request.decided_by=currentUser.id;
+    request.decided_at=new Date().toISOString();
+   }
+   renderPermissionRequests();
+   renderTable();
+   updateStats();
+   writeManagementLog('الموافقة على إذن',r.employee_id,r.employee_name,r.request_type).catch(()=>{});
+   showToast('تمت الموافقة وبدء استراحة الطوارئ لمدة 10 دقائق');
    return;
+  }catch(error){
+   console.error('EMERGENCY APPROVAL ERROR',error);
+   return showToast('تعذر تنفيذ استراحة الطوارئ');
   }
-
-  if(getActiveBreak(r.employee_id)){
-   showToast('لا يمكن الموافقة: لدى الموظف استراحة نشطة بالفعل');
-   return;
-  }
-
-  const {
-   data:breakData,
-   error:breakError
-  } =
-  await supabaseClient
-   .from('breaks')
-   .insert({
-    employee_id:r.employee_id,
-    break_type:'emergency',
-    start_time:new Date().toISOString(),
-    allowed_minutes:BREAK_RULES.emergency.minutes,
-    authorized_by:currentUser.id
-   })
-   .select()
-   .single();
-
-  if(breakError){
-   console.error(
-    'Emergency break approval error:',
-    breakError
-   );
-   showToast('تعذر بدء استراحة الطوارئ');
-   return;
-  }
-
-  patchBreak(breakData);
  }
 
- const {
-  error
- } =
- await supabaseClient
+ const {error}=await supabaseClient
   .from('permission_requests')
-  .update({
-   status,
-   decided_by:currentUser.id,
-   decided_at:new Date().toISOString()
-  })
+  .update({status,decided_by:currentUser.id,decided_at:new Date().toISOString()})
   .eq('id',id)
   .eq('status','pending');
 
@@ -3073,40 +5274,220 @@ async function updatePermissionRequest(id,status){
  r.status=status;
  r.decided_by=currentUser.id;
  r.decided_at=new Date().toISOString();
-
  renderPermissionRequests();
  renderTable();
  updateStats();
+ writeManagementLog(status==='approved'?'الموافقة على إذن':'رفض إذن',r.employee_id,r.employee_name,r.request_type).catch(()=>{});
+ showToast(status==='approved'?'تمت الموافقة على الإذن':'تم رفض الإذن');
+}
 
- writeManagementLog(
-  status==='approved'
-   ? 'الموافقة على إذن'
-   : 'رفض إذن',
-  r.employee_id,
-  r.employee_name,
-  r.request_type
- ).catch(()=>{});
+let realtimeChannel = null;
+let realtimeRefreshTimer = null;
 
- showToast(
-  status==='approved'
-   ? (
-      r.request_type==='استراحة طارئة'
-       ? 'تمت الموافقة وبدء استراحة الطوارئ لمدة 10 دقائق'
-       : 'تمت الموافقة على الإذن'
-     )
-   : 'تم رفض الإذن'
- );
+function scheduleRealtimeRefresh(task,delay=15){
+ clearTimeout(realtimeRefreshTimer);
+ realtimeRefreshTimer = setTimeout(async()=>{
+  try{
+   await task();
+  }catch(e){
+   console.error('Realtime refresh error',e);
+  }
+ },Math.max(0,delay));
+}
+
+function applyRealtimeBreakChange(payload){
+ const row=payload?.new || payload?.old;
+ if(!row?.id) return;
+ const event=payload?.eventType;
+ if(event==='DELETE'){
+  breaksList=breaksList.filter(x=>Number(x.id)!==Number(row.id));
+ }else{
+  const current=breaksList.find(x=>Number(x.id)===Number(row.id));
+  // قد يصل INSERT/Broadcast متأخر بعد UPDATE الذي أنهى الاستراحة؛ لا تسمح
+  // للنسخة القديمة ذات end_time الفارغ بإعادة فتحها في الواجهة.
+  const staleOpenUpdate = current?.end_time && !row.end_time &&
+   new Date(current.end_time).getTime() >= new Date(current.start_time).getTime();
+  if(!staleOpenUpdate) patchBreak(row);
+ }
+ renderTable();
+ updateStats();
 }
 
 function subscribeRealtime(){
  try{
-  supabaseClient.channel('attendance-live')
-   .on('postgres_changes',{event:'*',schema:'public',table:'attendance'},()=>{loadTodayAttendance().then(()=>{renderTable();updateStats();});})
-   .on('postgres_changes',{event:'*',schema:'public',table:'breaks'},()=>{loadTodayBreaks().then(()=>{renderTable();updateStats();});})
-   .on('postgres_changes',{event:'*',schema:'public',table:'employees'},()=>{loadEmployees().then(()=>{populateEmployeeSelects();renderTable();updateStats();if(isAdmin())loadAccountProfiles();});})
-   .on('postgres_changes',{event:'*',schema:'public',table:'permission_requests'},()=>{loadPermissionRequests().then(renderPermissionRequests);})
-   .subscribe();
- }catch(e){ console.warn('Realtime unavailable',e); }
+
+  if(realtimeChannel){
+   supabaseClient.removeChannel(realtimeChannel);
+  }
+
+  realtimeChannel =
+   supabaseClient
+    .channel('attendance-live')
+
+    .on(
+     'broadcast',
+     {event:'break_fast_update'},
+     ({payload})=>{
+      // تحديث فوري من Broadcast قبل وصول postgres_changes.
+      applyRealtimeBreakChange(payload);
+     }
+    )
+
+    .on(
+     'postgres_changes',
+     {
+      event:'*',
+      schema:'public',
+      table:'attendance'
+     },
+     ()=>{
+      scheduleRealtimeRefresh(async()=>{
+       await loadTodayAttendance();
+       renderTable();
+       updateStats();
+
+       if(isManagement()){
+        generateWeeklyReport().catch(()=>{});
+       }
+      });
+     }
+    )
+
+    .on(
+     'postgres_changes',
+     {
+      event:'*',
+      schema:'public',
+      table:'breaks'
+     },
+     (payload)=>{
+      // تحديث الاستراحة محلياً فور وصول حدث Supabase Realtime، بدون انتظار طلب SELECT جديد.
+      applyRealtimeBreakChange(payload);
+
+      // مزامنة خفيفة بالخلفية للتأكد من تطابق البيانات مع قاعدة البيانات.
+      scheduleRealtimeRefresh(async()=>{
+       await loadTodayBreaks();
+       renderTable();
+       updateStats();
+
+       if(isManagement()){
+        generateWeeklyReport().catch(()=>{});
+       }
+      },250);
+     }
+    )
+
+    .on(
+     'postgres_changes',
+     {
+      event:'*',
+      schema:'public',
+      table:'work_sessions'
+     },
+     ()=>{
+      scheduleRealtimeRefresh(async()=>{
+       await loadTodayWorkSessions();
+       renderTable();
+       if(isManagement()) generateWeeklyReport().catch(()=>{});
+      });
+     }
+    )
+
+    .on(
+     'postgres_changes',
+     {
+      event:'*',
+      schema:'public',
+      table:'employees'
+     },
+     ()=>{
+      scheduleRealtimeRefresh(async()=>{
+       await loadEmployees();
+       populateEmployeeSelects();
+       renderTable();
+       updateStats();
+
+       if(isAdmin()){
+        await loadAccountProfiles();
+       }
+
+       if(isManagement()){
+        generateWeeklyReport().catch(()=>{});
+       }
+      });
+     }
+    )
+
+    .on(
+     'postgres_changes',
+     {
+      event:'*',
+      schema:'public',
+      table:'permission_requests'
+     },
+     ()=>{
+      scheduleRealtimeRefresh(async()=>{
+       await loadPermissionRequests();
+       renderPermissionRequests();
+       renderTable();
+       updateStats();
+      });
+     }
+    )
+
+    .on(
+     'postgres_changes',
+     {
+      event:'*',
+      schema:'public',
+      table:'management_logs'
+     },
+     ()=>{
+      if(isManagement()){
+       scheduleRealtimeRefresh(async()=>{
+        await loadManagementLogs();
+       });
+      }
+     }
+    )
+
+    .on(
+     'postgres_changes',
+     {
+      event:'*',
+      schema:'public',
+      table:'activity_logs'
+     },
+     ()=>{
+      scheduleRealtimeRefresh(async()=>{
+       await loadActivityLogs();
+      });
+     }
+    )
+
+    .on(
+     'postgres_changes',
+     {
+      event:'*',
+      schema:'public',
+      table:'profiles'
+     },
+     ()=>{
+      scheduleRealtimeRefresh(async()=>{
+       if(isAdmin()){
+        await loadAccountProfiles();
+       }
+      });
+     }
+    )
+
+    .subscribe((status)=>{
+     console.log('Supabase Realtime:',status);
+    });
+
+ }catch(e){
+  console.warn('Realtime unavailable',e);
+ }
 }
 
 /* =========================================================
@@ -3114,370 +5495,587 @@ function subscribeRealtime(){
 ========================================================= */
 
 function getDateOnly(date){
-
- return new Date(date)
-  .toISOString()
-  .slice(0,10);
-
+ return baghdadDateOnly(date);
 }
 
 
 function setCurrentWeek(){
+ const d=new Date();
+ const weekdayName=new Intl.DateTimeFormat('en-US',{timeZone:BAGHDAD_TZ,weekday:'short'}).format(d);
+ const weekday={Sun:0,Mon:1,Tue:2,Wed:3,Thu:4,Fri:5,Sat:6}[weekdayName];
+ const monday=dateShift(today(),1-weekday);
+ document.getElementById('reportFrom').value=monday;
+ document.getElementById('reportTo').value=dateShift(monday,6);
+}
 
- const d =
-  new Date();
+function dateShift(dateString, days){
+ const [y,m,d]=dateString.split('-').map(Number);
+ const date=new Date(Date.UTC(y,m-1,d+days));
+ return `${date.getUTCFullYear()}-${String(date.getUTCMonth()+1).padStart(2,'0')}-${String(date.getUTCDate()).padStart(2,'0')}`;
+}
 
- const day =
-  d.getDay();
+function reportPeriodDays(from,to){
+ const [fy,fm,fd]=from.split('-').map(Number),[ty,tm,td]=to.split('-').map(Number);
+ return Math.max(1,Math.round((Date.UTC(ty,tm-1,td)-Date.UTC(fy,fm-1,fd))/86400000)+1);
+}
 
- const diff =
-  day===0 ? -6 : 1-day;
+async function loadReportData(from,to){
+ const {start:startISO,end:endISO}=baghdadRangeUtc(from,to);
+ const [{data:attendance,error:attendanceError},{data:breaks,error:breakError},{data:work_sessions,error:workError}]=await Promise.all([
+  supabaseClient.from('attendance').select('*').gte('attendance_date',from).lte('attendance_date',to),
+  supabaseClient.from('breaks').select('*').gte('start_time',startISO).lt('start_time',endISO),
+  // اجلب جلسات العمل التي تتقاطع مع الفترة، حتى لو بدأت قبل بدايتها أو انتهت بعدها.
+  supabaseClient.from('work_sessions').select('*').lt('start_time',endISO).or(`end_time.is.null,end_time.gt.${startISO}`)
+ ]);
+ if(attendanceError){console.error(attendanceError);throw new Error('تعذر تحميل بيانات الحضور');}
+ if(breakError){console.error(breakError);throw new Error('تعذر تحميل بيانات الاستراحات');}
+ if(workError){console.error(workError);throw new Error('تعذر تحميل سجل وقت العمل. تأكد من إنشاء جدول work_sessions');}
+ return {attendance:attendance||[],breaks:breaks||[],workSessions:work_sessions||[]};
+}
 
- const monday =
-  new Date(d);
-
- monday.setDate(
-  d.getDate()+diff
- );
-
- const sunday =
-  new Date(monday);
-
- sunday.setDate(
-  monday.getDate()+6
- );
-
- document.getElementById(
-  'reportFrom'
- ).value =
-  getDateOnly(monday);
-
- document.getElementById(
-  'reportTo'
- ).value =
-  getDateOnly(sunday);
-
+function sumWorkSessions(sessions,from,to){
+ const {start,end}=baghdadRangeUtc(from,to);
+ const rangeStart=Date.parse(start),rangeEnd=Date.parse(end),now=Date.now();
+ return (sessions||[]).reduce((sum,s)=>{
+  const sessionStart=Date.parse(s.start_time);
+  if(!Number.isFinite(sessionStart)) return sum;
+  const startAt=Math.max(sessionStart,rangeStart);
+  const rawEnd=s.end_time?Date.parse(s.end_time):now;
+  if(!Number.isFinite(rawEnd)) return sum;
+  const endAt=Math.min(rawEnd,rangeEnd,now);
+  if(endAt<=startAt) return sum;
+  return sum+Math.floor((endAt-startAt)/60000);
+ },0);
 }
 
 
+function complianceScoreForPeriod(employee, breakRows, useOverride=true, violationRows=[]){
+ const penalty=(violationRows||[])
+  .filter(v=>Number(v.employee_id)===Number(employee.id) && String(v.status||'active').toLowerCase()!=='cancelled')
+  .reduce((sum,v)=>sum+Math.max(0,Number(v.points||0)),0);
+ return Math.max(0,Math.min(100,100-penalty));
+}
+
+function automaticWeeklyRating(compliance,overageMinutes){
+ if(compliance>=95 && overageMinutes===0) return 'ممتاز';
+ if(compliance>=90) return 'جيد جداً';
+ if(compliance>=80) return 'جيد';
+ if(compliance>=70) return 'مقبول';
+ return 'يحتاج تحسين';
+}
+
+function compareValue(current,previous){
+ const delta=Number(current||0)-Number(previous||0);
+ if(delta>0) return {delta,cls:'report-change-up',symbol:'▲'};
+ if(delta<0) return {delta,cls:'report-change-down',symbol:'▼'};
+ return {delta:0,cls:'report-change-flat',symbol:'—'};
+}
+
+function formatDelta(value,unit=''){
+ const n=Number(value||0);
+ const sign=n>0?'+':n<0?'−':'';
+ return `${sign}${Math.abs(n)}${unit}`;
+}
+
+function complianceDeltaClass(delta){
+ if(delta>0) return 'report-change-up';
+ if(delta<0) return 'report-change-down';
+ return 'report-change-flat';
+}
+
+async function loadWeeklyReviews(from,to){
+ const {data,error}=await supabaseClient
+  .from('management_logs')
+  .select('*')
+  .eq('action','تقييم أسبوعي')
+  .order('created_at',{ascending:false})
+  .limit(1000);
+
+ if(error){
+  console.warn('Weekly review load error:',error);
+  return new Map();
+ }
+
+ const map=new Map();
+ (data||[]).forEach(row=>{
+  try{
+   const parsed=typeof row.details==='string'?JSON.parse(row.details):row.details;
+   if(!parsed || parsed.from!==from || parsed.to!==to) return;
+   const key=String(row.employee_id||'');
+   if(!map.has(key)){
+    map.set(key,{
+     rating:parsed.rating||'—',
+     note:parsed.note||'',
+     automaticRating:parsed.automaticRating||'—',
+     createdAt:row.created_at,
+     by:row.performed_by
+    });
+   }
+  }catch(e){}
+ });
+ return map;
+}
+
+
+/* =========================================================
+   EMPLOYEE EVALUATION + VIOLATIONS
+========================================================= */
+
+const DEFAULT_EVALUATION_PENALTIES = {
+ 'خروج بدون تبليغ':5, 'تجاوز الاستراحة':3, 'غياب بدون إذن':10,
+ 'نسيان تسجيل الاستراحة':2, 'تأخير':1, 'تدخين قبل مرور ساعة':2, 'أخرى':1
+};
+let evaluationPenalties={...DEFAULT_EVALUATION_PENALTIES};
+
+function focusEvaluationCustomRange(){
+ const el=document.getElementById('evaluationFrom');
+ if(el){el.focus();el.scrollIntoView({behavior:'smooth',block:'center'});}
+}
+
+async function loadEvaluationPenaltySettings(){
+ try{
+  const {data,error}=await supabaseClient.from('evaluation_penalty_settings').select('violation_type,points');
+  if(error) throw error;
+  evaluationPenalties={...DEFAULT_EVALUATION_PENALTIES};
+  (data||[]).forEach(r=>evaluationPenalties[r.violation_type]=Math.max(0,Number(r.points||0)));
+ }catch(e){ evaluationPenalties={...DEFAULT_EVALUATION_PENALTIES}; }
+ const map={'خروج بدون تبليغ':'penaltyUnnotifiedExit','تجاوز الاستراحة':'penaltyBreakOverage','غياب بدون إذن':'penaltyUnauthorizedAbsence','نسيان تسجيل الاستراحة':'penaltyBreakMissing','تدخين قبل مرور ساعة':'penaltySmokingEarly'};
+ Object.entries(map).forEach(([type,id])=>{const el=document.getElementById(id);if(el)el.value=evaluationPenalties[type]??DEFAULT_EVALUATION_PENALTIES[type];});
+ syncViolationPointInput();
+}
+
+async function saveEvaluationPenaltySettings(){
+ if(!isManagement()) return showToast('ليس لديك صلاحية تعديل الخصومات');
+ const map={'خروج بدون تبليغ':'penaltyUnnotifiedExit','تجاوز الاستراحة':'penaltyBreakOverage','غياب بدون إذن':'penaltyUnauthorizedAbsence','نسيان تسجيل الاستراحة':'penaltyBreakMissing','تدخين قبل مرور ساعة':'penaltySmokingEarly'};
+ const rows=Object.entries(map).map(([violation_type,id])=>({violation_type,points:Math.max(0,Math.min(100,Math.round(Number(document.getElementById(id)?.value||0)))),updated_by:currentUser?.id||null,updated_at:new Date().toISOString()}));
+ const {error}=await supabaseClient.from('evaluation_penalty_settings').upsert(rows,{onConflict:'violation_type'});
+ if(error){console.error(error);return showToast('تعذر حفظ الخصومات — نفذ SQL الخاص بإعدادات التقييم أولاً');}
+ await loadEvaluationPenaltySettings();
+ await writeManagementLog('تعديل خصومات التقييم',null,null,JSON.stringify(rows));
+ showToast('تم حفظ خصومات التقييم');
+}
+
+function syncViolationPointInput(){
+ const type=document.getElementById('violationType')?.value, input=document.getElementById('violationPoints');
+ if(input&&type) input.value=evaluationPenalties[type]??DEFAULT_EVALUATION_PENALTIES[type]??1;
+}
+
+function initEvaluationControls(){
+ const d=today();
+ ['evaluationFrom','evaluationTo','violationDate'].forEach(id=>{const el=document.getElementById(id);if(el&&!el.value)el.value=d;});
+ fillEvaluationEmployees();
+ const type=document.getElementById('violationType'); if(type&&!type.dataset.bound){type.addEventListener('change',syncViolationPointInput);type.dataset.bound='1';}
+ loadEvaluationPenaltySettings();
+}
+
+function fillEvaluationEmployees(){
+ const employees=(isManagement()?allEmployeesList:employeesList)||[];
+ ['evaluationEmployee','violationEmployee'].forEach(id=>{const el=document.getElementById(id);if(!el)return;const old=el.value;el.innerHTML=id==='evaluationEmployee'?'<option value="">كل الموظفين</option>':'';employees.forEach(e=>{const o=document.createElement('option');o.value=e.id;o.textContent=e.name;el.appendChild(o);});if([...el.options].some(o=>o.value===old))el.value=old;});
+}
+function setEvaluationToday(){const d=today();document.getElementById('evaluationFrom').value=d;document.getElementById('evaluationTo').value=d;generateEmployeeEvaluation();}
+function setEvaluationLast7Days(){const to=today(),from=dateShift(to,-6);document.getElementById('evaluationFrom').value=from;document.getElementById('evaluationTo').value=to;generateEmployeeEvaluation();}
+function setEvaluationThisMonth(){const d=today(),from=d.slice(0,7)+'-01';document.getElementById('evaluationFrom').value=from;document.getElementById('evaluationTo').value=d;generateEmployeeEvaluation();}
+
+async function loadViolations(from,to,employeeId=''){
+ let q=supabaseClient.from('employee_violations').select('*').gte('violation_date',from).lte('violation_date',to).order('violation_date',{ascending:false}).order('created_at',{ascending:false});
+ if(employeeId)q=q.eq('employee_id',employeeId);
+ const {data,error}=await q;if(error)throw error;return (data||[]).filter(v=>String(v.status||'active').toLowerCase()!=='cancelled');
+}
+async function loadEvaluationPermissions(from,to,employeeId=''){
+ const {start,end}=baghdadRangeUtc(from,to);
+ let q=supabaseClient.from('permission_requests').select('*').gte('created_at',start).lt('created_at',end);
+ if(employeeId)q=q.eq('employee_id',employeeId);
+ const {data,error}=await q;if(error)throw error;return data||[];
+}
+function violationReasonText(v){
+ const type=String(v.violation_type||'').trim();
+ const note=String(v.note||'').trim();
+ // لا نعرض رقم الاستراحة الداخلي كأنه سبب مفهوم للمستخدم.
+ if(type==='تدخين قبل مرور ساعة' && /break\s*id|استراحة\s*رقم/i.test(note)){
+  return 'بدأ الموظف استراحة تدخين قبل مرور ساعة على نهاية استراحة التدخين السابقة.';
+ }
+ if(note) return note;
+ const reasons={
+  'تجاوز الاستراحة':'تجاوز الموظف المدة المسموحة للاستراحة.',
+  'تدخين قبل مرور ساعة':'بدأ الموظف استراحة تدخين قبل مرور ساعة على نهاية الاستراحة السابقة.',
+  'غياب بدون إذن':'تم تسجيل غياب بدون إذن من الإدارة.',
+  'تأخير':'تم تسجيل حالة تأخير يدويًا من الإدارة.',
+  'خروج بدون تبليغ':'خرج الموظف دون إبلاغ الإدارة.',
+  'نسيان تسجيل الاستراحة':'لم يسجل الموظف الاستراحة في النظام.',
+  'أخرى':'لم تُضف تفاصيل إضافية لهذه المخالفة.'
+ };
+ return reasons[type]||'لم تُسجّل تفاصيل إضافية لسبب المخالفة.';
+}
+async function renderViolations(from,to,employeeId=''){
+ const body=document.getElementById('violationsBody');if(!body)return[];
+ try{
+  const rows=await loadViolations(from,to,employeeId);
+  if(!rows.length){body.innerHTML='<tr><td colspan="7">لا توجد مخالفات ضمن الفترة</td></tr>';return rows;}
+  body.innerHTML=rows.map(v=>{
+   const reason=violationReasonText(v);
+   return `<tr>
+    <td>${esc(v.violation_date||'')}</td>
+    <td>${esc((allEmployeesList.find(e=>Number(e.id)===Number(v.employee_id))||employeesList.find(e=>Number(e.id)===Number(v.employee_id))||{}).name||'—')}</td>
+    <td><strong>${esc(v.violation_type||'—')}</strong></td>
+    <td class="danger">-${Number(v.points||0)} نقطة</td>
+    <td style="min-width:240px;text-align:right;white-space:normal;line-height:1.6"><strong>سبب المخالفة:</strong> ${esc(reason)}</td>
+    <td>${String(v.source||'manual')==='automatic'?'تلقائية':'يدوية'}<br><small>${String(v.status||'active')==='cancelled'?'ملغاة':'فعّالة'}</small></td>
+    <td class="management-only">${isManagement()?`<button class="btn-red" onclick="cancelEmployeeViolation(${Number(v.id)})">إلغاء</button>`:''}</td>
+   </tr>`;
+  }).join('');
+  return rows;
+ }catch(e){console.error(e);body.innerHTML='<tr><td colspan="7">تعذر تحميل المخالفات: '+esc(e.message||'تحقق من صلاحيات قاعدة البيانات والجدول')+'</td></tr>';return[];}
+}
+
+async function addEmployeeViolation(){
+ if(!isManagement())return;const employeeId=document.getElementById('violationEmployee').value,employee=(allEmployeesList||[]).find(e=>String(e.id)===String(employeeId));if(!employee)return showToast('اختر الموظف');
+ const type=document.getElementById('violationType').value,points=Math.max(0,Number(document.getElementById('violationPoints').value||evaluationPenalties[type]||0)),date=document.getElementById('violationDate').value||today(),note=document.getElementById('violationNote').value.trim();
+ if(points<=0)return showToast('أدخل نقاط الخصم');
+ const {error}=await supabaseClient.from('employee_violations').insert({employee_id:employee.id,violation_type:type,points,violation_date:date,note,source:'manual',status:'active',created_by:currentUser?.id||null}).select().single();
+ if(error){console.error('EMPLOYEE VIOLATION INSERT ERROR:',error);return showToast('فشل حفظ المخالفة في قاعدة البيانات: '+(error.message||error.details||error.hint||'خطأ غير معروف'));}
+ await writeManagementLog('إضافة مخالفة',employee.id,employee.name,JSON.stringify({type,points,date,note}));document.getElementById('violationNote').value='';const liveRange=currentShiftEvaluationRange();if(date>=liveRange.from&&date<=liveRange.to)currentEvaluationViolations=filterViolationsForShift(await loadViolations(liveRange.from,liveRange.to),liveRange);renderTable();updateStats();showToast('تمت إضافة المخالفة');
+ const from=document.getElementById('evaluationFrom').value||date,to=document.getElementById('evaluationTo').value||date,emp=document.getElementById('evaluationEmployee').value;await generateEmployeeEvaluation(from,to,emp);
+}
+
+async function cancelEmployeeViolation(id){
+ if(!isManagement()||!confirm('إلغاء هذه المخالفة؟ سيتم إرجاع نقاطها للتقييم.'))return;
+ const {data:old,error:readError}=await supabaseClient.from('employee_violations').select('employee_id,violation_type,points,violation_date,note').eq('id',id).maybeSingle();if(readError||!old)return showToast('تعذر قراءة المخالفة');
+ const {error}=await supabaseClient.from('employee_violations').update({status:'cancelled',cancelled_by:currentUser?.id||null,cancelled_at:new Date().toISOString(),cancel_reason:'إلغاء من الإدارة'}).eq('id',id);if(error){console.error(error);return showToast('تعذر إلغاء المخالفة');}
+ const liveRange=currentShiftEvaluationRange();if(String(old.violation_date)>=liveRange.from&&String(old.violation_date)<=liveRange.to)currentEvaluationViolations=filterViolationsForShift(await loadViolations(liveRange.from,liveRange.to),liveRange);renderTable();updateStats();const employee=(allEmployeesList||[]).find(e=>Number(e.id)===Number(old.employee_id));await writeManagementLog('إلغاء مخالفة',old.employee_id,employee?.name||'',JSON.stringify({id,type:old.violation_type,points:old.points,date:old.violation_date}));showToast('تم إلغاء المخالفة وإرجاع نقاطها للتقييم');await generateEmployeeEvaluation();
+}
+async function deleteEmployeeViolation(id){return cancelEmployeeViolation(id);}
+
+async function syncAutomaticBreakViolations(from,to,employeeId=''){
+ const employees=(isManagement()?allEmployeesList:employeesList)||[];
+ const current=await loadReportData(from,to);
+ const breaks=(current.breaks||[]).slice().sort((a,b)=>new Date(a.start_time)-new Date(b.start_time));
+ const overPenalty=Math.max(0,Number(evaluationPenalties['تجاوز الاستراحة']??3));
+ const smokePenalty=Math.max(0,Number(evaluationPenalties['تدخين قبل مرور ساعة']??2));
+
+ // جلب الاستراحات التي سبقت بداية الفترة بساعتين حتى لا نفوّت آخر تدخينة
+ // عند حساب شرط مرور ساعة في أول يوم من التقرير.
+ let priorBreaks=[];
+ try{
+  const {start:startISO,end:endISO}=baghdadRangeUtc(from,to);
+  const priorStart=new Date(Date.parse(startISO)-2*60*60*1000).toISOString();
+  const {data,error}=await supabaseClient.from('breaks').select('*')
+   .gte('start_time',priorStart).lt('start_time',endISO);
+  if(error)throw error;
+  priorBreaks=data||[];
+ }catch(e){
+  console.error('AUTO VIOLATION PRIOR BREAKS LOAD ERROR:',e);
+  // نكمل تجاوز المدة، لكن لا نخترع مخالفة تدخين إذا تعذّر فحص السجل السابق.
+ }
+ const allBreaks=[...new Map([...priorBreaks,...breaks].map(b=>[String(b.id??`${b.employee_id}:${b.start_time}`),b])).values()]
+  .sort((a,b)=>new Date(a.start_time)-new Date(b.start_time));
+
+ async function insertOnce({employee,type,points,date,note,identity}){
+  let checkQuery=supabaseClient.from('employee_violations').select('id')
+   .eq('employee_id',employee.id).eq('violation_type',type)
+   .eq('violation_date',date).eq('status','active');
+  checkQuery=identity?checkQuery.ilike('note',`%break:${identity}%`):checkQuery.eq('note',note);
+  const {data:exists,error:checkError}=await checkQuery.limit(1);
+  if(checkError){console.error('AUTO VIOLATION CHECK ERROR:',type,checkError);return;}
+  if(exists?.length)return;
+  const {error:insertError}=await supabaseClient.from('employee_violations').insert({
+   employee_id:employee.id,violation_type:type,points,violation_date:date,note,
+   source:'automatic',status:'active',created_by:currentUser?.id||null
+  });
+  if(insertError)console.error('AUTO VIOLATION INSERT ERROR:',type,insertError);
+ }
+
+ for(const b of breaks){
+  if(employeeId&&Number(b.employee_id)!==Number(employeeId))continue;
+  const emp=employees.find(e=>Number(e.id)===Number(b.employee_id));
+  if(!emp)continue;
+  const date=String(b.start_time||from).slice(0,10);
+  // تجاوز الاستراحة: استخدم القيمة المخزنة، مع احتسابها احتياطياً من المدة الفعلية
+  // إذا كان العمود فارغاً/صفراً في سجل قديم.
+  let over=Number(b.overage_minutes||0);
+  if(over<=0 && b.end_time && Number(b.allowed_minutes)>0){
+   const actual=Number(b.actual_minutes||((Date.parse(b.end_time)-Date.parse(b.start_time))/60000));
+   over=Math.max(0,Math.floor(actual-Number(b.allowed_minutes)));
+  }
+  if(over>0){
+   const breakIdentity=b.id!=null?String(b.id):`${b.start_time||date}-${b.end_time||''}`;
+   await insertOnce({employee:emp,type:'تجاوز الاستراحة',points:overPenalty,date,
+    note:`تجاوز وقت الاستراحة ${over} دقيقة (break:${breakIdentity})`,identity:breakIdentity});
+  }
+
+  // مخالفة التدخين المبكر: تُسجّل إذا بدأت استراحة التدخين قبل مرور 60 دقيقة
+  // من نهاية استراحة التدخين السابقة للموظف نفسه.
+  if(b.break_type==='smoking' && b.start_time && smokePenalty>0){
+   const startMs=Date.parse(b.start_time);
+   const previous=allBreaks.filter(x=>Number(x.employee_id)===Number(b.employee_id)
+      && x.break_type==='smoking' && x.end_time
+      && Date.parse(x.end_time)<=startMs
+      && String(x.id)!==String(b.id))
+    .sort((a,c)=>Date.parse(c.end_time)-Date.parse(a.end_time))[0];
+   if(previous){
+    const elapsed=(startMs-Date.parse(previous.end_time))/60000;
+    if(elapsed>=0 && elapsed<60){
+     const breakIdentity=b.id!=null?String(b.id):`${b.start_time}-${b.end_time||''}`;
+     await insertOnce({employee:emp,type:'تدخين قبل مرور ساعة',points:smokePenalty,date,
+      note:`تدخين قبل مرور ساعة (break:${breakIdentity})`,identity:breakIdentity});
+    }
+   }
+  }
+ }
+}
+function evaluationRating(score){if(score>=95)return'ممتاز';if(score>=90)return'جيد جداً';if(score>=80)return'جيد';if(score>=70)return'مقبول';return'يحتاج تحسين';}
+
+async function generateEmployeeEvaluation(fromArg,toArg,empArg){
+ const from=fromArg||document.getElementById('evaluationFrom').value,to=toArg||document.getElementById('evaluationTo').value,employeeId=empArg!==undefined?empArg:document.getElementById('evaluationEmployee').value;if(!from||!to)return showToast('حدد تاريخ البداية والنهاية');if(from>to)return showToast('تاريخ البداية يجب أن يكون قبل النهاية');
+ try{
+  await loadEvaluationPenaltySettings();await syncAutomaticBreakViolations(from,to,employeeId);const employees=(isManagement()?allEmployeesList:employeesList)||[],selected=employeeId?employees.filter(e=>String(e.id)===String(employeeId)):employees,current=await loadReportData(from,to),violations=await loadViolations(from,to,employeeId),permissions=await loadEvaluationPermissions(from,to,employeeId),days=reportPeriodDays(from,to),area=document.getElementById('employeeEvaluationArea');
+  const cards=selected.map(e=>{const v=violations.filter(x=>Number(x.employee_id)===Number(e.id)),attendance=current.attendance.filter(a=>Number(a.employee_id)===Number(e.id)),breaks=current.breaks.filter(b=>Number(b.employee_id)===Number(e.id)),perms=permissions.filter(p=>Number(p.employee_id)===Number(e.id)),penalty=v.reduce((s,x)=>s+Number(x.points||0),0),compliance=complianceScoreForPeriod(e,breaks,false,v),presentDays=new Set(attendance.filter(a=>a.check_in).map(a=>a.attendance_date)).size,absentDays=new Set(v.filter(x=>x.violation_type==='غياب بدون إذن').map(x=>x.violation_date)).size,breakOverages=v.filter(x=>x.violation_type==='تجاوز الاستراحة').length,unnotifiedExits=v.filter(x=>x.violation_type==='خروج بدون تبليغ').length,unauthorizedAbsences=v.filter(x=>x.violation_type==='غياب بدون إذن').length,lateness=v.filter(x=>x.violation_type==='تأخير').length,missingBreak=v.filter(x=>x.violation_type==='نسيان تسجيل الاستراحة').length,breakCount=breaks.length,overageMinutes=breaks.reduce((s,b)=>s+Number(b.overage_minutes||0),0),approvedPermissions=perms.filter(p=>['approved','موافق','مقبول'].includes(String(p.status||'').trim().toLowerCase())).length;return{e,penalty,compliance,v,perms,presentDays,absentDays,breakOverages,unnotifiedExits,unauthorizedAbsences,lateness,missingBreak,breakCount,overageMinutes,approvedPermissions,days};});
+  area.innerHTML=cards.length?cards.map(x=>`<div class="evaluation-row"><div class="evaluation-name"><span>👤 ${esc(x.e.name)}</span><span class="badge badge-blue">${esc(from)} → ${esc(to)}</span></div><div class="summary-box"><small>التقييم</small><strong class="${x.compliance>=80?'success':x.compliance>=60?'warning':'danger'}">${x.compliance}%</strong></div><div class="summary-box"><small>⚠️ المخالفات</small><strong>${x.v.length}</strong></div><div class="summary-box"><small>⏱️ تجاوز الاستراحة</small><strong>${x.breakOverages}</strong><small>${x.overageMinutes} د</small></div><div class="summary-box"><small>🚪 خروج بدون تبليغ</small><strong>${x.unnotifiedExits}</strong></div><div class="summary-box"><small>❌ غياب بدون إذن</small><strong>${x.unauthorizedAbsences}</strong></div><div class="summary-box"><small>🕐 التأخير</small><strong>${x.lateness}</strong></div><div class="summary-box"><small>☕ الاستراحات</small><strong>${x.breakCount}</strong></div><div class="summary-box"><small>📋 الأذونات</small><strong>${x.perms.length}</strong><small>موافق: ${x.approvedPermissions}</small></div><div class="summary-box"><small>⭐ التقييم</small><strong class="${x.compliance>=80?'success':x.compliance>=60?'warning':'danger'}">${evaluationRating(x.compliance)}</strong></div><div class="summary-box"><small>📉 الخصم</small><strong class="danger">-${x.penalty}</strong></div></div>`).join(''):'<p class="muted">لا توجد بيانات للموظف المحدد.</p>';
+  await renderViolations(from,to,employeeId);
+ }catch(e){console.error(e);showToast('تعذر استخراج التقييم: '+(e.message||''));}
+}
+
 async function generateWeeklyReport(){
-
- const from =
-  document.getElementById(
-   'reportFrom'
-  ).value;
-
- const to =
-  document.getElementById(
-   'reportTo'
-  ).value;
-
- const employeeFilter =
-  document.getElementById(
-   'reportEmployee'
-  ).value;
+ const from=document.getElementById('reportFrom').value;
+ const to=document.getElementById('reportTo').value;
+ const employeeFilter=document.getElementById('reportEmployee').value;
 
  if(!from || !to){
-
-  showToast(
-   'حدد تاريخ البداية والنهاية'
-  );
-
+  showToast('حدد تاريخ البداية والنهاية');
   return;
-
  }
-
  if(from>to){
-
-  showToast(
-   'تاريخ البداية يجب أن يكون قبل النهاية'
-  );
-
+  showToast('تاريخ البداية يجب أن يكون قبل النهاية');
   return;
-
  }
 
- let employees =
-  (isManagement()?allEmployeesList:employeesList).slice();
-
+ let employees=(isManagement()?allEmployeesList:employeesList).slice();
  if(employeeFilter){
-
-  employees =
-   employees.filter(
-    e=>String(e.id)===String(employeeFilter)
-   );
-
+  employees=employees.filter(e=>String(e.id)===String(employeeFilter));
  }
 
  if(!employees.length){
-
-  document.getElementById(
-   'reportArea'
-  ).innerHTML=
-   '<p class="muted">لا توجد بيانات.</p>';
-
+  document.getElementById('reportArea').innerHTML='<p class="muted">لا توجد بيانات.</p>';
+  weeklyReportRows=[];
   return;
-
  }
 
- const startISO =
-  from+'T00:00:00';
+ const days=reportPeriodDays(from,to);
+ const previousTo=dateShift(from,-1);
+ const previousFrom=dateShift(previousTo,-(days-1));
 
- const endDate =
-  new Date(to+'T23:59:59');
+ try{
+  await loadEvaluationPenaltySettings();
+  await syncAutomaticBreakViolations(from,to,employeeFilter||'');
+  await syncAutomaticBreakViolations(previousFrom,previousTo,employeeFilter||'');
+  const [current,previous,reviews,currentViolations,previousViolations]=await Promise.all([
+   loadReportData(from,to),
+   loadReportData(previousFrom,previousTo),
+   loadWeeklyReviews(from,to),
+   loadViolations(from,to,employeeFilter||''),
+   loadViolations(previousFrom,previousTo,employeeFilter||'')
+  ]);
 
- const endISO =
-  endDate.toISOString();
+  weeklyReportRows=employees.map(employee=>{
+   const empAttendance=current.attendance.filter(a=>Number(a.employee_id)===Number(employee.id));
+   const empBreaks=current.breaks.filter(b=>Number(b.employee_id)===Number(employee.id));
+   const empWorkSessions=current.workSessions.filter(w=>Number(w.employee_id)===Number(employee.id));
 
- const {
-  data:attendance,
-  error:attendanceError
- } =
- await supabaseClient
-  .from('attendance')
-  .select('*')
-  .gte(
-   'attendance_date',
-   from
-  )
-  .lte(
-   'attendance_date',
-   to
-  );
+   const prevAttendance=previous.attendance.filter(a=>Number(a.employee_id)===Number(employee.id));
+   const prevBreaks=previous.breaks.filter(b=>Number(b.employee_id)===Number(employee.id));
+   const prevWorkSessions=previous.workSessions.filter(w=>Number(w.employee_id)===Number(employee.id));
 
- if(attendanceError){
+   const presentDays=empAttendance.filter(a=>a.check_in).length;
+   const workMinutes=sumWorkSessions(empWorkSessions,from,to);
+   const breakMinutes=empBreaks.reduce((sum,b)=>sum+Number(b.actual_minutes||0),0);
+   const breakCount=empBreaks.length;
+   const overageMinutes=empBreaks.reduce((sum,b)=>sum+Number(b.overage_minutes||0),0);
 
-  console.error(attendanceError);
+   const previousPresentDays=prevAttendance.filter(a=>a.check_in).length;
+   const previousWorkMinutes=sumWorkSessions(prevWorkSessions,previousFrom,previousTo);
+   const previousBreakMinutes=prevBreaks.reduce((sum,b)=>sum+Number(b.actual_minutes||0),0);
+   const previousBreakCount=prevBreaks.length;
+   const previousOverageMinutes=prevBreaks.reduce((sum,b)=>sum+Number(b.overage_minutes||0),0);
 
-  showToast(
-   'تعذر تحميل بيانات الحضور'
-  );
-
-  return;
-
- }
-
- const {
-  data:breaks,
-  error:breakError
- } =
- await supabaseClient
-  .from('breaks')
-  .select('*')
-  .gte(
-   'start_time',
-   startISO
-  )
-  .lte(
-   'start_time',
-   endISO
-  );
-
- if(breakError){
-
-  console.error(breakError);
-
-  showToast(
-   'تعذر تحميل بيانات الاستراحات'
-  );
-
-  return;
-
- }
-
- weeklyReportRows =
-  employees.map(employee=>{
-
-   const empAttendance =
-    (attendance||[]).filter(
-     a =>
-      Number(a.employee_id)===
-      Number(employee.id)
-    );
-
-   const empBreaks =
-    (breaks||[]).filter(
-     b =>
-      Number(b.employee_id)===
-      Number(employee.id)
-    );
-
-   const presentDays =
-    empAttendance.filter(
-     a=>a.check_in
-    ).length;
-
-   const totalWorkMinutes =
-    empAttendance.reduce(
-     (sum,a)=>
-      sum+
-      minutesBetween(
-       a.check_in,
-       a.check_out
-      ),
-     0
-    );
-
-   const breakMinutes =
-    empBreaks.reduce(
-     (sum,b)=>
-      sum+
-      Number(b.actual_minutes||0),
-     0
-    );
-
-   const overageMinutes =
-    empBreaks.reduce(
-     (sum,b)=>
-      sum+
-      Number(b.overage_minutes||0),
-     0
-    );
-
-   const score =
-    employee.compliance_override !== null &&
-    employee.compliance_override !== undefined
-     ? Number(employee.compliance_override)
-     : Math.max(
-        0,
-        Math.round(
-         100-overageMinutes
-        )
-       );
+   const compliance=complianceScoreForPeriod(employee,empBreaks,false,currentViolations.filter(v=>Number(v.employee_id)===Number(employee.id)));
+   const previousCompliance=complianceScoreForPeriod(employee,prevBreaks,false,previousViolations.filter(v=>Number(v.employee_id)===Number(employee.id)));
+   const automaticRating=automaticWeeklyRating(compliance,overageMinutes);
+   const review=reviews.get(String(employee.id))||null;
 
    return {
     id:employee.id,
     name:employee.name,
-    presentDays:presentDays,
-    workMinutes:totalWorkMinutes,
-    breakMinutes:breakMinutes,
-    overageMinutes:overageMinutes,
-    compliance:Math.max(
-     0,
-     Math.min(
-      100,
-      Math.round(score)
-     )
-    )
+    photoUrl:employee.photo_url||'',
+    presentDays,
+    workMinutes,
+    breakMinutes,
+    breakCount,
+    overageMinutes,
+    compliance,
+    previousPresentDays,
+    previousWorkMinutes,
+    previousBreakMinutes,
+    previousBreakCount,
+    previousOverageMinutes,
+    previousCompliance,
+    automaticRating,
+    managerRating:review?.rating||'—',
+    managerNote:review?.note||'',
+    reviewCreatedAt:review?.createdAt||null
    };
-
   });
 
- renderWeeklyReport(
-  from,
-  to
- );
+  weeklyReportRows.sort((a,b)=>{
+   if(b.compliance!==a.compliance) return b.compliance-a.compliance;
+   if(a.overageMinutes!==b.overageMinutes) return a.overageMinutes-b.overageMinutes;
+   return b.workMinutes-a.workMinutes;
+  });
 
+  weeklyReportRows.forEach((row,index)=>row.rank=index+1);
+
+  renderWeeklyReport(from,to,previousFrom,previousTo);
+ }catch(error){
+  console.error(error);
+  showToast(error.message||'تعذر إنشاء التقرير');
+ }
 }
-
 
 function minutesToText(minutes){
-
- const m =
-  Number(minutes||0);
-
- const h =
-  Math.floor(m/60);
-
- const min =
-  m%60;
-
- if(h>0)
-  return `${h} ساعة ${min} دقيقة`;
-
+ const m=Number(minutes||0);
+ const h=Math.floor(m/60);
+ const min=m%60;
+ if(h>0) return `${h} ساعة ${min} دقيقة`;
  return `${min} دقيقة`;
-
 }
 
+function openWeeklyReviewModal(employeeId){
+ if(!isManagement()) return;
+ const row=weeklyReportRows.find(r=>Number(r.id)===Number(employeeId));
+ if(!row) return;
 
-function renderWeeklyReport(from,to){
+ const modal=document.getElementById('weeklyReviewModal');
+ modal.dataset.employeeId=employeeId;
+ modal.dataset.from=document.getElementById('reportFrom').value;
+ modal.dataset.to=document.getElementById('reportTo').value;
+ modal.dataset.previousFrom=dateShift(modal.dataset.from,-reportPeriodDays(modal.dataset.from,modal.dataset.to));
+ modal.dataset.previousTo=dateShift(modal.dataset.from,-1);
 
- const area =
-  document.getElementById(
-   'reportArea'
-  );
+ document.getElementById('weeklyReviewEmployeeName').innerText=
+  `${row.name} — التقييم التلقائي: ${row.automaticRating}`;
 
- if(!weeklyReportRows.length){
+ document.getElementById('weeklyReviewRating').value=
+  row.managerRating!=='—'?row.managerRating:row.automaticRating;
 
-  area.innerHTML=
-   '<p class="muted">لا توجد بيانات.</p>';
+ document.getElementById('weeklyReviewNote').value=row.managerNote||'';
+ modal.classList.add('show');
+}
 
+function closeWeeklyReviewModal(){
+ document.getElementById('weeklyReviewModal').classList.remove('show');
+}
+
+async function saveWeeklyReview(){
+ if(!isManagement()) return;
+
+ const modal=document.getElementById('weeklyReviewModal');
+ const employeeId=modal.dataset.employeeId;
+ const from=modal.dataset.from;
+ const to=modal.dataset.to;
+ const employee=(isManagement()?allEmployeesList:employeesList).find(e=>Number(e.id)===Number(employeeId));
+ if(!employee) return;
+
+ const rating=document.getElementById('weeklyReviewRating').value;
+ const note=document.getElementById('weeklyReviewNote').value.trim();
+ const row=weeklyReportRows.find(r=>Number(r.id)===Number(employeeId));
+
+ const details=JSON.stringify({
+  from,
+  to,
+  rating,
+  note,
+  automaticRating:row?.automaticRating||'—',
+  compliance:row?.compliance??0,
+  overageMinutes:row?.overageMinutes??0
+ });
+
+ const {error}=await supabaseClient.from('management_logs').insert({
+  action:'تقييم أسبوعي',
+  employee_id:employee.id,
+  target_name:employee.name,
+  details,
+  performed_by:currentUser?.id||null
+ });
+
+ if(error){
+  console.error(error);
+  showToast('تعذر حفظ ملاحظة وتقييم المدير');
   return;
-
  }
 
- const totalPresent =
-  weeklyReportRows.reduce(
-   (s,r)=>s+r.presentDays,
-   0
-  );
+ if(row){
+  row.managerRating=rating;
+  row.managerNote=note;
+  row.reviewCreatedAt=new Date().toISOString();
+ }
 
- const totalWork =
-  weeklyReportRows.reduce(
-   (s,r)=>s+r.workMinutes,
-   0
-  );
+ closeWeeklyReviewModal();
+ const savedPreviousFrom=modal.dataset.previousFrom || dateShift(from,-7);
+ const savedPreviousTo=modal.dataset.previousTo || dateShift(from,-1);
+ renderWeeklyReport(
+  document.getElementById('reportFrom').value,
+  document.getElementById('reportTo').value,
+  savedPreviousFrom,
+  savedPreviousTo
+ );
+ showToast('تم حفظ ملاحظة وتقييم المدير');
+}
 
- const totalBreak =
-  weeklyReportRows.reduce(
-   (s,r)=>s+r.breakMinutes,
-   0
-  );
+function applyWeeklySummaryColor(color){
+ const safeColor=/^#[0-9a-fA-F]{6}$/.test(color)?color:'#ffffff';
+ const section=document.getElementById('weeklyReportSection');
+ if(section) section.style.setProperty('--weekly-summary-bg',safeColor);
+ const picker=document.getElementById('weeklySummaryBgColor');
+ if(picker) picker.value=safeColor;
+ localStorage.setItem('weeklySummaryBgColor',safeColor);
+}
 
- const totalOverage =
-  weeklyReportRows.reduce(
-   (s,r)=>s+r.overageMinutes,
-   0
-  );
+function resetWeeklySummaryColor(){
+ applyWeeklySummaryColor('#ffffff');
+}
 
- const averageCompliance =
-  Math.round(
-   weeklyReportRows.reduce(
-    (s,r)=>s+r.compliance,
-    0
-   )/
-   weeklyReportRows.length
-  );
+function initWeeklySummaryColor(){
+ const saved=localStorage.getItem('weeklySummaryBgColor') || '#ffffff';
+ applyWeeklySummaryColor(saved);
+ const picker=document.getElementById('weeklySummaryBgColor');
+ if(picker && !picker.dataset.bound){
+  picker.dataset.bound='1';
+  picker.addEventListener('input',e=>applyWeeklySummaryColor(e.target.value));
+ }
+}
+
+function renderWeeklyReport(from,to,previousFrom,previousTo){
+ const area=document.getElementById('reportArea');
+
+ if(!weeklyReportRows.length){
+  area.innerHTML='<p class="muted">لا توجد بيانات.</p>';
+  return;
+ }
+
+ const totalPresent=weeklyReportRows.reduce((s,r)=>s+r.presentDays,0);
+ const totalWork=weeklyReportRows.reduce((s,r)=>s+r.workMinutes,0);
+ const totalBreak=weeklyReportRows.reduce((s,r)=>s+r.breakMinutes,0);
+ const totalBreakCount=weeklyReportRows.reduce((s,r)=>s+r.breakCount,0);
+ const totalOverage=weeklyReportRows.reduce((s,r)=>s+r.overageMinutes,0);
+ const averageCompliance=Math.round(weeklyReportRows.reduce((s,r)=>s+r.compliance,0)/weeklyReportRows.length);
 
  area.innerHTML=`
-
   <div class="report-summary">
-
-   <div class="summary-box">
-    <small>عدد الموظفين</small>
-    <strong>
-     ${weeklyReportRows.length}
-    </strong>
-   </div>
-
-   <div class="summary-box">
-    <small>أيام الحضور</small>
-    <strong>
-     ${totalPresent}
-    </strong>
-   </div>
-
-   <div class="summary-box">
-    <small>وقت العمل</small>
-    <strong>
-     ${minutesToText(totalWork)}
-    </strong>
-   </div>
-
-   <div class="summary-box">
-    <small>وقت الاستراحات</small>
-    <strong>
-     ${minutesToText(totalBreak)}
-    </strong>
-   </div>
-
-   <div class="summary-box">
-    <small>متوسط الالتزام</small>
-    <strong class="success">
-     ${averageCompliance}%
-    </strong>
-   </div>
-
+   <div class="summary-box"><small>عدد الموظفين</small><strong>${weeklyReportRows.length}</strong></div>
+   <div class="summary-box"><small>أيام الحضور</small><strong>${totalPresent}</strong></div>
+   <div class="summary-box"><small>إجمالي وقت العمل الفعلي</small><strong>${minutesToText(totalWork)}</strong></div>
+   <div class="summary-box"><small>إجمالي الاستراحات الفعلي</small><strong>${minutesToText(totalBreak)}</strong></div>
+   <div class="summary-box"><small>عدد مرات البريك</small><strong>${totalBreakCount}</strong></div>
+   <div class="summary-box"><small>تجاوز وقت البريك</small><strong class="${totalOverage>0?'danger':'success'}">${totalOverage} دقيقة</strong></div>
+   <div class="summary-box"><small>متوسط التقييم</small><strong class="success">${averageCompliance}%</strong></div>
   </div>
 
   <div style="margin-bottom:12px">
@@ -3485,92 +6083,90 @@ function renderWeeklyReport(from,to){
    <b>${esc(from)}</b>
    إلى
    <b>${esc(to)}</b>
-   —
-   إجمالي التجاوز:
-   <b class="danger">
-    ${totalOverage} دقيقة
-   </b>
+   — <b>مقارنة بالأسبوع السابق:</b>
+   <b>${esc(previousFrom)}</b>
+   إلى
+   <b>${esc(previousTo)}</b>
   </div>
 
   <div class="table-wrap">
-
    <table id="weeklyReportTable">
-
     <thead>
      <tr>
+      <th>الترتيب</th>
       <th>الموظف</th>
-      <th>أيام الحضور</th>
-      <th>وقت العمل</th>
-      <th>الاستراحات</th>
-      <th>التجاوز</th>
-      <th>الالتزام</th>
+      <th>إجمالي وقت العمل الفعلي</th>
+      <th>إجمالي الاستراحات</th>
+      <th>عدد مرات البريك</th>
+      <th>تجاوز وقت البريك</th>
+      <th>التقييم</th>
+      <th>التقييم التلقائي</th>
+      <th>مقارنة بالأسبوع السابق</th>
+      <th>التنبيه</th>
+      <th>تقييم المدير</th>
+      <th>ملاحظة المدير</th>
      </tr>
     </thead>
-
     <tbody>
+     ${weeklyReportRows.map(row=>{
+      const workCmp=compareValue(row.workMinutes,row.previousWorkMinutes);
+      const breakCmp=compareValue(row.breakMinutes,row.previousBreakMinutes);
+      const overCmp=compareValue(row.overageMinutes,row.previousOverageMinutes);
+      const complianceDelta=row.compliance-row.previousCompliance;
+      const alert=row.overageMinutes>0;
 
-     ${weeklyReportRows.map(row=>`
-
-      <tr>
-
-       <td>
-        <b>${esc(row.name)}</b>
-       </td>
-
-       <td>
-        ${row.presentDays}
-       </td>
-
-       <td>
-        ${minutesToText(row.workMinutes)}
-       </td>
-
-       <td>
-        ${minutesToText(row.breakMinutes)}
-       </td>
-
-       <td class="${
-        row.overageMinutes>0
-         ? 'danger'
-         : 'success'
-       }">
-        ${row.overageMinutes} دقيقة
-       </td>
-
-       <td>
-
-        <b class="${
-         row.compliance>=90
-          ? 'success'
-          : row.compliance>=70
-           ? 'warning'
-           : 'danger'
-        }">
-         ${row.compliance}%
-        </b>
-
-        <div class="progress">
-         <div
-          style="width:${row.compliance}%"
-         ></div>
-        </div>
-
-       </td>
-
-      </tr>
-
-     `).join('')}
-
+      return `
+       <tr>
+        <td><b>#${row.rank}</b></td>
+        <td>${row.photoUrl?`<img class="report-photo" src="${esc(row.photoUrl)}" alt="">`:``} <b>${esc(row.name)}</b></td>
+        <td>
+         ${minutesToText(row.workMinutes)}
+         <div class="${workCmp.cls}" style="font-size:11px;margin-top:4px">${workCmp.symbol} ${minutesToText(Math.abs(workCmp.delta))}</div>
+        </td>
+        <td>
+         ${minutesToText(row.breakMinutes)}
+         <div class="${breakCmp.cls}" style="font-size:11px;margin-top:4px">${breakCmp.symbol} ${minutesToText(Math.abs(breakCmp.delta))}</div>
+        </td>
+        <td>${row.breakCount}<div class="${row.breakCount-row.previousBreakCount>0?'report-change-up':row.breakCount-row.previousBreakCount<0?'report-change-down':'report-change-flat'}" style="font-size:11px;margin-top:4px">${formatDelta(row.breakCount-row.previousBreakCount)}</div></td>
+        <td class="${alert?'danger':'success'}">
+         ${row.overageMinutes} دقيقة
+         <div class="${overCmp.cls}" style="font-size:11px;margin-top:4px">${overCmp.symbol} ${Math.abs(overCmp.delta)} دقيقة</div>
+        </td>
+        <td>
+         <b class="${row.compliance>=90?'success':row.compliance>=70?'warning':'danger'}">${row.compliance}%</b>
+         <div class="${complianceDeltaClass(complianceDelta)}" style="font-size:11px;margin-top:4px">${formatDelta(complianceDelta,' نقطة')}</div>
+        </td>
+        <td>
+         <span class="${row.automaticRating==='ممتاز'||row.automaticRating==='جيد جداً'?'report-ok':'report-alert'}">${esc(row.automaticRating)}</span>
+        </td>
+        <td style="min-width:190px">
+         <div><b>التواجد:</b> ${formatDelta(row.workMinutes-row.previousWorkMinutes,' دقيقة')}</div>
+         <div><b>الاستراحات:</b> ${formatDelta(row.breakMinutes-row.previousBreakMinutes,' دقيقة')}</div>
+         <div><b>التجاوز:</b> ${formatDelta(row.overageMinutes-row.previousOverageMinutes,' دقيقة')}</div>
+         <div><b>التقييم:</b> ${formatDelta(complianceDelta,' نقطة')}</div>
+        </td>
+        <td>
+         ${alert
+          ? `<span class="report-alert">🚨 تجاوز الحد (${row.overageMinutes} دقيقة)</span>`
+          : `<span class="report-ok">✓ ضمن الحد</span>`}
+        </td>
+        <td>
+         <span class="badge badge-purple">${esc(row.managerRating)}</span>
+         <div style="margin-top:6px">
+          <button class="btn-purple" onclick="openWeeklyReviewModal(${row.id})">📝 تعديل</button>
+         </div>
+        </td>
+        <td class="report-review">
+         ${row.managerNote?`<div>${esc(row.managerNote)}</div>`:'<span class="muted">لا توجد ملاحظة</span>'}
+        </td>
+       </tr>
+      `;
+     }).join('')}
     </tbody>
-
    </table>
-
   </div>
-
  `;
-
 }
-
 
 /* =========================================================
    CSV EXPORT
@@ -3599,82 +6195,59 @@ function csvEscape(value){
 
 
 function exportWeeklyCSV(){
-
  if(!weeklyReportRows.length){
-
-  showToast(
-   'أنشئ التقرير أولاً'
-  );
-
+  showToast('أنشئ التقرير أولاً');
   return;
-
  }
 
- const rows=[
-  [
-   'الموظف',
-   'أيام الحضور',
-   'وقت العمل',
-   'الاستراحات',
-   'التجاوز بالدقائق',
-   'الالتزام'
-  ]
- ];
+ const rows=[[
+  'الترتيب',
+  'الموظف',
+  'إجمالي وقت العمل الفعلي',
+  'إجمالي الاستراحات',
+  'عدد مرات البريك',
+  'مجموع تجاوز وقت البريك',
+  'نسبة التقييم',
+  'التقييم الأسبوعي التلقائي',
+  'التواجد مقارنة بالأسبوع السابق',
+  'الاستراحات مقارنة بالأسبوع السابق',
+  'التجاوز مقارنة بالأسبوع السابق',
+  'الالتزام مقارنة بالأسبوع السابق',
+  'التنبيه',
+  'تقييم المدير',
+  'ملاحظة المدير'
+ ]];
 
  weeklyReportRows.forEach(row=>{
-
   rows.push([
+   row.rank,
    row.name,
-   row.presentDays,
    minutesToText(row.workMinutes),
    minutesToText(row.breakMinutes),
-   row.overageMinutes,
-   row.compliance+'%'
+   row.breakCount,
+   row.overageMinutes+' دقيقة',
+   row.compliance+'%',
+   row.automaticRating,
+   formatDelta(row.workMinutes-row.previousWorkMinutes,' دقيقة'),
+   formatDelta(row.breakMinutes-row.previousBreakMinutes,' دقيقة'),
+   formatDelta(row.overageMinutes-row.previousOverageMinutes,' دقيقة'),
+   formatDelta(row.compliance-row.previousCompliance,' نقطة'),
+   row.overageMinutes>0?'تجاوز الحد':'ضمن الحد',
+   row.managerRating,
+   row.managerNote
   ]);
-
  });
 
- const csv =
-  '\uFEFF'+
-  rows
-   .map(
-    row=>row
-     .map(csvEscape)
-     .join(',')
-   )
-   .join('\n');
-
- const blob =
-  new Blob(
-   [csv],
-   {
-    type:'text/csv;charset=utf-8;'
-   }
-  );
-
- const url =
-  URL.createObjectURL(blob);
-
- const a =
-  document.createElement('a');
-
+ const csv='\uFEFF'+rows.map(row=>row.map(csvEscape).join(',')).join('\n');
+ const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
+ const url=URL.createObjectURL(blob);
+ const a=document.createElement('a');
  a.href=url;
-
- a.download =
-  'weekly_attendance_report_' +
-  today() +
-  '.csv';
-
+ a.download='weekly_attendance_detailed_report_'+today()+'.csv';
  a.click();
-
  URL.revokeObjectURL(url);
-
- showToast(
-  'تم تصدير التقرير'
- );
-
+ showToast('تم تصدير التقرير التفصيلي');
 }
-
 
 /* =========================================================
    PRINT / PDF
@@ -3745,8 +6318,9 @@ function printWeeklyReport(){
 
     th,td{
      border:1px solid #999;
-     padding:8px;
+     padding:7px;
      text-align:center;
+     font-size:10px;
     }
 
     th{
@@ -3839,6 +6413,31 @@ const I18N = {
  'هذا الأسبوع':'This Week',
  'تصدير CSV':'Export CSV',
  'طباعة / PDF':'Print / PDF',
+ 'إجمالي التواجد':'Total Presence',
+ 'إجمالي الاستراحات':'Total Break Time',
+ 'إجمالي الاستراحات الفعلي':'Actual Total Break Time',
+ 'عدد مرات البريك':'Break Count',
+ 'تجاوز وقت البريك':'Break Overage',
+ 'التقييم الأسبوعي التلقائي':'Automatic Weekly Rating',
+ 'مقارنة بالأسبوع السابق':'Compared with Previous Week',
+ 'التنبيه':'Alert',
+ 'تقييم المدير':'Manager Rating',
+ 'ملاحظة المدير':'Manager Note',
+ 'ملاحظة وتقييم المدير':'Manager Note & Rating',
+ 'حفظ الملاحظة والتقييم':'Save Note & Rating',
+ 'تعديل':'Edit',
+ 'تجاوز الحد':'Limit exceeded',
+ 'ضمن الحد':'Within limit',
+ 'لا توجد ملاحظة':'No note',
+ 'التقييم التلقائي':'Automatic rating',
+ 'ممتاز':'Excellent',
+ 'جيد جداً':'Very Good',
+ 'جيد':'Good',
+ 'مقبول':'Acceptable',
+ 'يحتاج تحسين':'Needs Improvement',
+ 'تم حفظ ملاحظة وتقييم المدير':'Manager note and rating saved',
+ 'تعذر حفظ ملاحظة وتقييم المدير':'Unable to save manager note and rating',
+
  'سجل الإدارة':'Management Log',
  'تحديث السجل':'Refresh Log',
  'التاريخ':'Date',
@@ -3847,7 +6446,7 @@ const I18N = {
  'بواسطة':'By',
  'سجل النشاط':'Activity Log',
  'المدة':'Duration',
- 'تعديل نسبة الالتزام':'Edit Compliance',
+ 'تعديل نسبة التقييم':'Edit Compliance',
  'النسبة الجديدة':'New percentage',
  'سبب التعديل':'Reason for change',
  'اكتب سبب تعديل النسبة...':'Enter the reason for changing the percentage...',
@@ -3915,12 +6514,12 @@ const I18N = {
  'أنشئ التقرير أولاً':'Generate the report first',
  'تم تصدير التقرير':'Report exported',
  'المتصفح منع نافذة الطباعة':'The browser blocked the print window',
- 'تعديل نسبة الالتزام متاح للـ Admin فقط':'Compliance editing is available to Admin only',
+ 'تعديل نسبة التقييم متاح للـ Admin فقط':'Compliance editing is available to Admin only',
  'هذه العملية للـ Admin فقط':'This operation is for Admin only',
  'النسبة يجب أن تكون بين 0 و100':'Percentage must be between 0 and 100',
  'يجب كتابة سبب تعديل النسبة':'Please enter a reason for changing the percentage',
- 'تعذر حفظ نسبة الالتزام':'Unable to save compliance',
- 'تم حفظ نسبة الالتزام':'Compliance saved',
+ 'تعذر حفظ نسبة التقييم':'Unable to save compliance',
+ 'تم حفظ نسبة التقييم':'Compliance saved',
  'تعذر تعطيل الموظف':'Unable to disable employee',
  'تعطيل موظف':'Disable employee',
  'تم تعطيل الموظف':'Employee disabled',
@@ -3955,8 +6554,9 @@ const I18N = {
  'تم رفض الإذن':'Permission rejected',
  'تعذر إرسال طلب الإذن':'Unable to send permission request',
  'تعذر تحديث طلب الإذن':'Unable to update permission request',
- 'الحساب معطل أو غير موجود':'Account is disabled or does not exist'
-};
+ 'الحساب معطل أو غير موجود':'Account is disabled or does not exist',
+
+ 'عرض الكل':'Show All', 'لوحة التحكم فقط':'Dashboard Only', 'التقرير الأسبوعي فقط':'Weekly Report Only', 'عرض الشاشة':'Display View', 'لوحة التحكم والملخص اليومي':'Dashboard & Daily Summary', 'إجمالي ساعات العمل الفعلية اليوم':'Total actual work hours today', 'متوسط التقييم للموظفين':'Average employee compliance', 'نسب لوحة التحكم':'Dashboard Percentages', 'وقت العمل':'Work Time', 'متوسط التقييم':'Average Rating', 'فترات الاستراحة':'Break Periods', 'إجمالي مدة الاستراحات اليوم':'Total break duration today', 'ملخص وقت العمل اليوم':'Today’s Work Summary', 'الحاضرون حالياً':'Currently Present', 'في الاستراحة':'On Break', 'غير المتواجدين':'Absent', 'متوسط وقت العمل للموظف':'Average Work Time per Employee', 'نسبة وقت العمل':'Work Time Percentage', 'مقابل 8 ساعات':'Against 8 Hours', 'ملخص الاستراحات':'Break Summary', 'عدد الاستراحات':'Break Count', 'متوسط الاستراحة':'Average Break', 'Cooldown':'Cooldown', 'إذن خروج':'Exit Permission', 'إذن تأخير':'Late Permission', 'إذن شخصي':'Personal Permission', 'إذن طبي':'Medical Permission', 'النوع':'Type', 'حذف طلبات اليوم':'Delete Today’s Requests', 'حذف كل الطلبات':'Delete All Requests', 'حذف سجلات اليوم':'Delete Today’s Logs', 'حذف كل السجلات':'Delete All Logs', 'إخفاء سجل النشاط':'Hide Activity Log', 'إظهار سجل النشاط':'Show Activity Log', 'نسبة التقييم':'Compliance Percentage', 'التواجد مقارنة بالأسبوع السابق':'Attendance vs Previous Week', 'الاستراحات مقارنة بالأسبوع السابق':'Breaks vs Previous Week', 'التجاوز مقارنة بالأسبوع السابق':'Overage vs Previous Week', 'الالتزام مقارنة بالأسبوع السابق':'Compliance vs Previous Week', 'الترتيب':'Rank', 'إجمالي وقت العمل الفعلي':'Total Actual Work Time', 'مجموع تجاوز وقت البريك':'Total Break Overage', 'نقطة':'points', 'التقييم الأسبوعي':'Weekly Evaluation', 'تقييم أسبوعي':'Weekly Evaluation', 'فعال':'Active', 'معطل':'Disabled', 'تفعيل':'Enable', 'تفعيل موظف':'Enable Employee', 'الموافقة على إذن':'Approve Permission', 'رفض إذن':'Reject Permission', 'استراحة طارئة':'Emergency Break', 'استراحة طارئة لمدة 10 دقائق':'10-minute emergency break', 'تم تجاوز الحد':'Limit exceeded', 'لا توجد بيانات.':'No data.', 'اضغط «تحديث قائمة الحسابات» لعرض الحسابات.':'Click “Refresh Accounts” to view accounts.', 'تعديل الالتزام':'Edit Compliance', 'اكتب ملاحظة المدير لهذا الموظف خلال الفترة المحددة...':'Enter the manager note for this employee for the selected period...', 'العربية':'Arabic', 'English':'English', 'نظام الحضور والاستراحات — Username + Password':'Attendance & Breaks System — Username + Password',};
 
 function t(value){
  if(value===null || value===undefined) return value;
@@ -3971,7 +6571,7 @@ function t(value){
   out=out.replace(/تبقى (\d+) دقيقة/g,'$1 min remaining before the next smoking break');
   out=out.replace(/تجاوز (\d+) دقيقة/g,'Exceeded by $1 min');
   out=out.replace(/انتهت الاستراحة — تجاوز (\d+) دقيقة/g,'Break ended — exceeded by $1 min');
-  out=out.replace(/تم تعديل نسبة الالتزام إلى (\d+)%\. السبب: (.*)/g,'Compliance changed to $1%. Reason: $2');
+  out=out.replace(/تم تعديل نسبة التقييم إلى (\d+)%\. السبب: (.*)/g,'Compliance changed to $1%. Reason: $2');
   out=out.replace(/النسبة (\d+)%. (.*)/g,'Percentage $1%. $2');
   out=out.replace(/هل تريد تعطيل الموظف (.*)؟/g,'Disable employee $1?');
   return out;
@@ -3989,18 +6589,26 @@ function applyLanguage(){
  const walker=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT);
  const nodes=[];
  while(walker.nextNode()) nodes.push(walker.currentNode);
-
  nodes.forEach(node=>{
   if(node.parentElement && ['SCRIPT','STYLE'].includes(node.parentElement.tagName)) return;
-  node.nodeValue=t(node.nodeValue);
+  const translated=t(node.nodeValue);
+  if(translated!==node.nodeValue) node.nodeValue=translated;
  });
-
- document.querySelectorAll('input[placeholder],textarea[placeholder]')
-  .forEach(el=>el.placeholder=t(el.placeholder));
+ document.querySelectorAll('input[placeholder],textarea[placeholder],select[aria-label],button[title]').forEach(el=>{
+  if(el.placeholder) el.placeholder=t(el.placeholder);
+  if(el.title) el.title=t(el.title);
+  if(el.getAttribute('aria-label')) el.setAttribute('aria-label',t(el.getAttribute('aria-label')));
+ });
 }
-
-
-
+let languageObserverStarted=false;
+function startLanguageObserver(){
+ if(languageObserverStarted) return;
+ languageObserverStarted=true;
+ const observer=new MutationObserver(()=>{
+  if(currentLang==='en') applyLanguage();
+ });
+ observer.observe(document.body,{childList:true,subtree:true});
+}
 function toggleLanguage(){
 
  currentLang = currentLang==='ar' ? 'en' : 'ar';
@@ -4135,6 +6743,342 @@ document
 
 checkSession();
 
+</script>
+
+<script>
+if(document.readyState==='loading'){
+ document.addEventListener('DOMContentLoaded',initWeeklySummaryColor);
+}else{
+ initWeeklySummaryColor();
+}
+</script>
+
+<script>
+document.addEventListener('DOMContentLoaded',()=>{
+  updateThemeButton();
+  initEvaluationControls();
+});
+
+document.addEventListener('DOMContentLoaded',()=>{
+ initTheme();
+ prepareDisplayModes();
+ startLanguageObserver();
+ applyLanguage();
+ updateThemeButton();
+});
+</script>
+
+
+<script>
+/* ===== سجل الطلبات المتأخرة =====
+   ضع رابط Web App الخاص بـ Google Apps Script في المتغير أدناه بعد إعداد الشيت.
+*/
+const LATE_ORDERS_SHEETS_WEBHOOK = 'https://script.google.com/macros/s/AKfycbzug82gs4flVmIxhMuSEeHwFzj8cPd6xWPv2g7-tInttTYvL-B1gOyriG4kqtCqRNHLfA/exec';
+let lateOrdersRealtimeChannel = null;
+let lateOrderReasonsCache = [];
+
+function handleLateReasonChange(){
+ const select=document.getElementById('lateOrderReasonSelect');
+ const field=document.getElementById('lateOrderReason');
+ const other=select.value==='__other__';
+ field.style.display=other?'block':'none';
+ field.required=other;
+ if(!other) field.value='';
+}
+
+async function loadLateOrderReasons(){
+ const select=document.getElementById('lateOrderReasonSelect');
+ if(!select) return;
+ try{
+  const {data,error}=await supabaseClient.from('late_order_reasons').select('id,reason,is_active').eq('is_active',true).order('sort_order').order('reason');
+  if(error) throw error;
+  lateOrderReasonsCache=data||[];
+  select.innerHTML='<option value="">اختر سبب التأخير</option>'+lateOrderReasonsCache.map(r=>`<option value="${esc(r.reason)}">${esc(r.reason)}</option>`).join('')+'<option value="__other__">سبب آخر — أكتب التفاصيل</option>';
+  renderLateOrderReasonAdmin();
+ }catch(e){
+  console.error('loadLateOrderReasons',e);
+  // Useful fallback until the setup SQL has been run.
+  select.innerHTML='<option value="">اختر سبب التأخير</option>'+['تأخر تجهيز المطعم','تأخر السائق','ضغط بالطلبات','خطأ بالطلب','مشكلة بالدفع'].map(r=>`<option value="${esc(r)}">${esc(r)}</option>`).join('')+'<option value="__other__">سبب آخر — أكتب التفاصيل</option>';
+  renderLateOrderReasonAdmin();
+ }
+ handleLateReasonChange();
+}
+
+function renderLateOrderReasonAdmin(){
+ const panel=document.getElementById('lateReasonAdminPanel');
+ const list=document.getElementById('lateReasonsAdminList');
+ if(!panel||!list) return;
+ const allowed=typeof isManagement==='function'&&isManagement();
+ panel.style.display=allowed?'block':'none';
+ if(!allowed) return;
+ list.innerHTML=lateOrderReasonsCache.length?lateOrderReasonsCache.map(r=>`<div style="display:flex;gap:8px;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid #ddd"><span>${esc(r.reason)}</span><div style="display:flex;gap:6px"><button type="button" class="btn-dark" onclick="editLateOrderReason(${Number(r.id)})">تعديل</button><button type="button" class="btn-dark" onclick="deactivateLateOrderReason(${Number(r.id)})">تعطيل</button></div></div>`).join(''):'<p class="muted">لا توجد أسباب ثابتة محفوظة بعد.</p>';
+}
+
+async function addLateOrderReason(){
+ if(!isManagement()) return;
+ const input=document.getElementById('newLateReasonName');
+ const reason=input.value.trim();
+ if(!reason){alert('اكتب السبب أولاً.');return;}
+ try{
+  const {error}=await supabaseClient.from('late_order_reasons').insert({reason,created_by:currentUser.id,is_active:true});
+  if(error) throw error;
+  input.value=''; await loadLateOrderReasons();
+ }catch(e){alert('تعذرت إضافة السبب. تأكد من تشغيل ملف SQL. '+(e.message||''));}
+}
+
+async function editLateOrderReason(id){
+ if(!isManagement()) return;
+ const old=lateOrderReasonsCache.find(r=>Number(r.id)===Number(id));
+ if(!old) return;
+ const reason=prompt('عدّل سبب التأخير:',old.reason);
+ if(reason===null) return;
+ if(!reason.trim()){alert('السبب لا يمكن أن يكون فارغاً.');return;}
+ try{
+  const {error}=await supabaseClient.from('late_order_reasons').update({reason:reason.trim()}).eq('id',id);
+  if(error) throw error;
+  await loadLateOrderReasons();
+ }catch(e){alert('تعذر تعديل السبب: '+(e.message||''));}
+}
+
+async function deactivateLateOrderReason(id){
+ if(!isManagement()||!confirm('تعطيل هذا السبب؟ سيبقى ظاهراً في السجلات القديمة ولن يظهر للاختيار الجديد.')) return;
+ try{
+  const {error}=await supabaseClient.from('late_order_reasons').update({is_active:false}).eq('id',id);
+  if(error) throw error;
+  await loadLateOrderReasons();
+ }catch(e){alert('تعذر تعطيل السبب: '+(e.message||''));}
+}
+
+function toggleLateOrdersVisibility(){
+ const card=document.getElementById('lateOrdersCard');
+ const table=card ? card.querySelector('.table-wrap') : null;
+ const btn=document.getElementById('toggleLateOrdersVisibilityBtn');
+ if(!table||!btn) return;
+ const willHide=table.style.display!=='none';
+ table.style.display=willHide?'none':'';
+ btn.textContent=willHide?'إظهار قائمة السجلات':'إخفاء قائمة السجلات';
+ btn.setAttribute('aria-expanded',String(!willHide));
+}
+
+function updateLateOrdersAdminControls(){
+ const btn=document.getElementById('clearLateOrdersBtn');
+ if(btn) btn.style.display=(typeof isManagement==='function'&&isManagement())?'inline-flex':'none';
+}
+
+async function clearLateOrdersSystemOnly(){
+ if(!(typeof isManagement==='function'&&isManagement())){alert('هذا الإجراء للمسؤول أو المدير فقط.');return;}
+ const ok=confirm('تأكيد تصفير سجل الطلبات المتأخرة داخل النظام؟\nسيتم حذف السجلات من قاعدة بيانات النظام لجميع المستخدمين، ولن يتم حذف أي شيء من Google Sheets. لا يمكن التراجع عن الحذف.');
+ if(!ok) return;
+ const btn=document.getElementById('clearLateOrdersBtn');
+ const msg=document.getElementById('lateOrdersMessage');
+ if(btn) btn.disabled=true;
+ if(msg) msg.textContent='جارٍ تصفير سجل النظام فقط...';
+ try{
+  const {error}=await supabaseClient.from('late_orders').delete().gte('id',1);
+  if(error) throw error;
+  await loadLateOrders();
+  if(msg) msg.textContent='تم تصفير سجل النظام. بيانات Google Sheets لم تتغير.';
+ }catch(e){
+  console.error('clearLateOrdersSystemOnly',e);
+  if(msg) msg.textContent='تعذر تصفير السجل. قد تحتاج إلى تشغيل تحديث SQL الخاص بصلاحية الحذف للمسؤول.';
+  alert('تعذر تصفير السجل: '+(e.message||'تحقق من صلاحيات Supabase.'));
+ }finally{if(btn) btn.disabled=false;}
+}
+
+function subscribeLateOrdersRealtime(){
+ if(lateOrdersRealtimeChannel){supabaseClient.removeChannel(lateOrdersRealtimeChannel);}
+ lateOrdersRealtimeChannel=supabaseClient.channel('late-orders-live-'+(currentUser?.id||'user'))
+  .on('postgres_changes',{event:'*',schema:'public',table:'late_orders'},()=>loadLateOrders())
+  .on('postgres_changes',{event:'*',schema:'public',table:'late_order_reasons'},()=>loadLateOrderReasons())
+  .subscribe();
+}
+
+let lateOrdersCache = [];
+let lateOrdersSearchResults = null;
+
+function getLateOrdersFilteredRows(){
+ const orderQuery=(document.getElementById('lateOrderSearch')?.value||'').trim().toLocaleLowerCase();
+ const fromDate=(document.getElementById('lateOrderFromDate')?.value||'').trim();
+ const toDate=(document.getElementById('lateOrderToDate')?.value||'').trim();
+ const daysRaw=(document.getElementById('lateOrderSearchDays')?.value||'').trim();
+ const days=daysRaw ? parseInt(daysRaw,10) : 0;
+ if(fromDate && toDate && fromDate>toDate){
+  showToast('تاريخ البداية يجب أن يكون قبل تاريخ النهاية أو مساويًا له');
+  return [];
+ }
+ const now=new Date();
+ const todayBaghdad=baghdadDateOnly(now);
+ const cutoff=days ? new Date(baghdadDayStartUtc(todayBaghdad)) : null;
+ if(cutoff) cutoff.setUTCDate(cutoff.getUTCDate()-days+1);
+ return lateOrdersCache.filter(r=>{
+  // مطابقة رقم الطلب بالكامل وليس جزءًا منه.
+  if(orderQuery && String(r.order_number||'').trim().toLocaleLowerCase()!==orderQuery) return false;
+  const rowDate=r.created_at?baghdadDateOnly(new Date(r.created_at)):'';
+  if(fromDate && (!rowDate || rowDate<fromDate)) return false;
+  if(toDate && (!rowDate || rowDate>toDate)) return false;
+  if(cutoff && (!r.created_at || new Date(r.created_at)<cutoff)) return false;
+  return true;
+ });
+}
+
+function searchLateOrders(){
+ if(!isAdmin()){showToast('البحث في سجل التأخيرات متاح للمسؤول فقط');return;}
+ lateOrdersSearchResults=getLateOrdersFilteredRows();
+ renderLateOrders(true);
+}
+
+function renderLateOrders(useSearchResults=false){
+ const toolbar=document.getElementById('lateOrdersSearchToolbar');
+ if(toolbar) toolbar.style.display=isAdmin()?'':'none';
+ const body=document.getElementById('lateOrdersBody');
+ const msg=document.getElementById('lateOrdersMessage');
+ if(!body) return;
+ const hasSearch=((document.getElementById('lateOrderSearch')?.value||'').trim() ||
+  (document.getElementById('lateOrderFromDate')?.value||'') ||
+  (document.getElementById('lateOrderToDate')?.value||'') ||
+  (document.getElementById('lateOrderSearchDays')?.value||'').trim());
+ const filtered=useSearchResults && lateOrdersSearchResults!==null
+  ? lateOrdersSearchResults
+  : (hasSearch ? getLateOrdersFilteredRows() : lateOrdersCache);
+ if(!filtered.length){
+  body.innerHTML='<tr><td colspan="5">لا توجد سجلات مطابقة لمعايير البحث.</td></tr>';
+ }else{
+  body.innerHTML=filtered.map(r=>{
+   const date=r.created_at?new Date(r.created_at).toLocaleString('ar-IQ'):'—';
+   return `<tr><td>${esc(date)}</td><td>${esc(r.order_number)}</td><td>${esc(r.restaurant_name)}</td><td style="white-space:pre-wrap;text-align:right">${esc(r.delay_reason)}</td><td>${esc(r.employee_name||'—')}</td></tr>`;
+  }).join('');
+ }
+ if(msg) msg.textContent=`السجلات المعروضة: ${filtered.length} من أصل ${lateOrdersCache.length}.`;
+}
+
+function fetchLateOrdersJsonp(url){
+ return new Promise((resolve,reject)=>{
+  const callbackName='__lateOrdersJsonp_'+Date.now()+'_'+Math.random().toString(36).slice(2);
+  const script=document.createElement('script');
+  let settled=false;
+  const cleanup=()=>{try{delete window[callbackName];}catch(_){window[callbackName]=undefined;} if(script.parentNode)script.parentNode.removeChild(script);};
+  const timeout=setTimeout(()=>{if(settled)return;settled=true;cleanup();reject(new Error('انتهت مهلة الاتصال بـ Google Sheets.'));},15000);
+  window[callbackName]=(data)=>{if(settled)return;settled=true;clearTimeout(timeout);cleanup();resolve(data);};
+  script.onerror=()=>{if(settled)return;settled=true;clearTimeout(timeout);cleanup();reject(new Error('تعذر تحميل رد Google Sheets. تحقق من رابط النشر وصلاحياته.'));};
+  script.src=url+(url.includes('?')?'&':'?')+'callback='+encodeURIComponent(callbackName)+'&t='+Date.now();
+  document.head.appendChild(script);
+ });
+}
+
+async function loadLateOrders(){
+ updateLateOrdersAdminControls();
+ const body=document.getElementById('lateOrdersBody');
+ const msg=document.getElementById('lateOrdersMessage');
+ if(!body) return;
+ body.innerHTML='<tr><td colspan="5">جارٍ تحميل سجل الطلبات من Google Sheets...</td></tr>';
+ try{
+  if(!LATE_ORDERS_SHEETS_WEBHOOK) throw new Error('رابط Google Sheets غير مضبوط.');
+  // Apps Script لا يسمح دائماً بقراءة JSON عبر fetch من نطاق الموقع بسبب CORS؛ JSONP يتجاوز مشكلة القراءة.
+  const result=await fetchLateOrdersJsonp(LATE_ORDERS_SHEETS_WEBHOOK);
+  if(!result || result.ok!==true || !Array.isArray(result.rows)){
+   throw new Error('واجهة Google Sheets لا تُرجع السجلات بعد. حدّث doGet في Apps Script ليُرجع rows ثم أعد نشر التطبيق.');
+  }
+  lateOrdersSearchResults=null;
+  lateOrdersCache=result.rows.map((r,i)=>({
+   id:r.id??i,
+   order_number:String(r.order_number??r['رقم الطلب']??''),
+   restaurant_name:String(r.restaurant_name??r['اسم المطعم']??''),
+   delay_reason:String(r.delay_reason??r['سبب التأخير']??''),
+   employee_name:String(r.employee_name??r['اسم الموظف']??''),
+   created_at:r.created_at??r['وقت التسجيل']??null
+  })).sort((a,b)=>new Date(b.created_at||0)-new Date(a.created_at||0));
+  renderLateOrders();
+  if(msg) msg.textContent += ' — مصدر السجل: Google Sheets';
+ }catch(e){
+  console.error('loadLateOrders from Google Sheets',e);
+  // احتياطياً: إذا تعطل رابط Google Sheets، اعرض سجلات Supabase بدلاً من ترك الجدول فارغاً.
+  try{
+   const {data,error}=await supabaseClient.from('late_orders')
+    .select('id,order_number,restaurant_name,delay_reason,employee_name,created_at')
+    .order('created_at',{ascending:false});
+   if(error) throw error;
+   lateOrdersSearchResults=null;
+   lateOrdersCache=(data||[]).map(r=>({
+    id:r.id,
+    order_number:String(r.order_number||''),
+    restaurant_name:String(r.restaurant_name||''),
+    delay_reason:String(r.delay_reason||''),
+    employee_name:String(r.employee_name||''),
+    created_at:r.created_at||null
+   }));
+   renderLateOrders();
+   if(msg)msg.textContent='تعذر الاتصال بـ Google Sheets؛ يتم عرض سجلات النظام الاحتياطية. '+(e.message||'');
+  }catch(dbError){
+   console.error('loadLateOrders fallback',dbError);
+   body.innerHTML='<tr><td colspan="5">تعذر تحميل السجلات من Google Sheets ومن قاعدة بيانات النظام.</td></tr>';
+   if(msg)msg.textContent='فشل تحميل السجل من المصدرين. تحقق من نشر Apps Script وصلاحيات جدول late_orders.';
+  }
+ }
+}
+
+function resetLateOrderSearch(){
+ if(!isAdmin()){showToast('هذه الميزة للمسؤول فقط');return;}
+ ['lateOrderSearch','lateOrderFromDate','lateOrderToDate','lateOrderSearchDays'].forEach(id=>{
+  const el=document.getElementById(id); if(el) el.value='';
+ });
+ lateOrdersSearchResults=null;
+ renderLateOrders();
+}
+
+function downloadLateOrders(){
+ if(!isAdmin()){showToast('تنزيل سجل التأخيرات متاح للمسؤول فقط');return;}
+ const rows=getLateOrdersFilteredRows();
+ if(!rows.length){showToast('لا توجد سجلات لتنزيلها');return;}
+ const headers=['تاريخ التسجيل','رقم الطلب','اسم المطعم','سبب التأخير','الموظف المسجل'];
+ const csv=[headers,...rows.map(r=>[
+  r.created_at?new Date(r.created_at).toLocaleString('ar-IQ'):'',
+  r.order_number||'',r.restaurant_name||'',r.delay_reason||'',r.employee_name||''
+ ])].map(row=>row.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\r\n');
+ const blob=new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8;'});
+ const url=URL.createObjectURL(blob);
+ const a=document.createElement('a');a.href=url;
+ a.download='سجل_الطلبات_المتأخرة_'+new Date().toISOString().slice(0,10)+'.csv';
+ document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);
+}
+
+async function submitLateOrder(event){
+ event.preventDefault();
+ const btn=document.getElementById('lateOrderSubmitBtn');const msg=document.getElementById('lateOrdersMessage');
+ const orderNumber=document.getElementById('lateOrderNumber').value.trim();
+ const restaurantName=document.getElementById('lateRestaurantName').value.trim();
+ const selectedReason=document.getElementById('lateOrderReasonSelect').value;
+ const otherReason=document.getElementById('lateOrderReason').value.trim();
+ const delayReason=selectedReason==='__other__'?otherReason:selectedReason;
+ if(!orderNumber||!restaurantName||!delayReason){msg.textContent='يرجى إدخال رقم الطلب واسم المطعم واختيار السبب أو كتابة السبب الآخر.';return;}
+ if(!currentUser||!currentProfile){msg.textContent='يجب تسجيل الدخول أولاً.';return;}
+ btn.disabled=true;msg.textContent='جارٍ حفظ الطلب...';
+ try{
+  const duplicate=await supabaseClient.from('late_orders').select('id').eq('order_number',orderNumber).limit(1);
+  if(duplicate.error) throw duplicate.error;
+  if(duplicate.data?.length&&!confirm('يوجد سجل سابق بنفس رقم الطلب. هل تريد تسجيله مرة ثانية؟')){msg.textContent='تم إلغاء التسجيل لتجنب التكرار.';return;}
+  const row={order_number:orderNumber,restaurant_name:restaurantName,delay_reason:delayReason,employee_id:currentProfile.employee_id||null,employee_name:currentProfile.full_name||currentProfile.username||'موظف',created_by:currentUser.id};
+  const {data,error}=await supabaseClient.from('late_orders').insert(row).select('id,order_number,restaurant_name,delay_reason,employee_name,created_at').single();
+  if(error) throw error;
+  let sheetNotice='';
+  if(LATE_ORDERS_SHEETS_WEBHOOK){
+   try{
+    // Apps Script يستقبل JSON كنص عادي لتفادي طلبات preflight في المتصفح.
+    await fetch(LATE_ORDERS_SHEETS_WEBHOOK,{
+     method:'POST',mode:'no-cors',redirect:'follow',
+     headers:{'Content-Type':'text/plain;charset=utf-8'},
+     body:JSON.stringify({...row,created_at:data.created_at})
+    });
+    sheetNotice=' تم إرسال بيانات الطلب إلى Google Sheets. إذا لم تظهر بالشيت، حدّث نشر Apps Script بالكود المرفق.';
+   }catch(sheetError){
+    console.warn('Google Sheets sync failed',sheetError);
+    sheetNotice=' حُفظ الطلب في النظام، لكن تعذر إرسال نسخة إلى Google Sheets.';
+   }
+  }
+  else sheetNotice=' السجل يتحدث مباشرة داخل النظام؛ ربط Google Sheets يحتاج إعداد رابط المزامنة.';
+  document.getElementById('lateOrderForm').reset();handleLateReasonChange();msg.textContent='تم تسجيل الطلب المتأخر بنجاح.'+sheetNotice;await loadLateOrders();
+ }catch(e){console.error('submitLateOrder',e);msg.textContent='لم يتم حفظ الطلب: '+(e.message||'تأكد من إعداد جدول late_orders وصلاحياته.');}
+ finally{btn.disabled=false;}
+}
 </script>
 
 </body>
