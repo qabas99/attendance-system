@@ -6272,7 +6272,7 @@ function evaluationRating(score){if(score>=95)return'ممتاز';if(score>=90)re
 async function generateEmployeeEvaluation(fromArg,toArg,empArg){
  const from=fromArg||document.getElementById('evaluationFrom').value,to=toArg||document.getElementById('evaluationTo').value,employeeId=empArg!==undefined?empArg:document.getElementById('evaluationEmployee').value;if(!from||!to)return showToast('حدد تاريخ البداية والنهاية');if(from>to)return showToast('تاريخ البداية يجب أن يكون قبل النهاية');
  try{
-  await loadEvaluationPenaltySettings();await syncAutomaticBreakViolations(from,to,employeeId);const employees=(isManagement()?allEmployeesList:employeesList)||[],selected=employeeId?employees.filter(e=>String(e.id)===String(employeeId)):employees,current=await loadReportData(from,to),violations=await loadViolations(from,to,employeeId),permissions=await loadEvaluationPermissions(from,to,employeeId),days=reportPeriodDays(from,to),area=document.getElementById('employeeEvaluationArea');
+  await loadEvaluationPenaltySettings();await syncAutomaticBreakViolations(from,to,employeeId);const employees=(isManagement()?allEmployeesList:employeesList)||[],selected=employeeId?employees.filter(e=>String(e.id)===String(employeeId)):employees,current=await loadReportData(from,to),cancelledIds=await loadCancelledOverageIdsForRange(from,to),violations=await loadViolations(from,to,employeeId),permissions=await loadEvaluationPermissions(from,to,employeeId),days=reportPeriodDays(from,to),area=document.getElementById('employeeEvaluationArea');
   const cards=selected.map(e=>{const v=violations.filter(x=>Number(x.employee_id)===Number(e.id)),attendance=current.attendance.filter(a=>Number(a.employee_id)===Number(e.id)),breaks=current.breaks.filter(b=>Number(b.employee_id)===Number(e.id)),perms=permissions.filter(p=>Number(p.employee_id)===Number(e.id)),penalty=v.reduce((s,x)=>s+Number(x.points||0),0),compliance=complianceScoreForPeriod(e,breaks,false,v),presentDays=new Set(attendance.filter(a=>a.check_in).map(a=>a.attendance_date)).size,absentDays=new Set(v.filter(x=>x.violation_type==='غياب بدون إذن').map(x=>x.violation_date)).size,breakOverages=v.filter(x=>x.violation_type==='تجاوز الاستراحة').length,unnotifiedExits=v.filter(x=>x.violation_type==='خروج بدون تبليغ').length,unauthorizedAbsences=v.filter(x=>x.violation_type==='غياب بدون إذن').length,lateness=v.filter(x=>x.violation_type==='تأخير').length,missingBreak=v.filter(x=>x.violation_type==='نسيان تسجيل الاستراحة').length,breakCount=breaks.length,overageMinutes=effectiveOverageMinutes(breaks,cancelledIds),approvedPermissions=perms.filter(p=>['approved','موافق','مقبول'].includes(String(p.status||'').trim().toLowerCase())).length;return{e,penalty,compliance,v,perms,presentDays,absentDays,breakOverages,unnotifiedExits,unauthorizedAbsences,lateness,missingBreak,breakCount,overageMinutes,approvedPermissions,days};});
   area.innerHTML=cards.length?cards.map(x=>`<div class="evaluation-row"><div class="evaluation-name"><span>👤 ${esc(x.e.name)}</span><span class="badge badge-blue">${esc(from)} → ${esc(to)}</span></div><div class="summary-box"><small>التقييم</small><strong class="${x.compliance>=80?'success':x.compliance>=60?'warning':'danger'}">${x.compliance}%</strong></div><div class="summary-box"><small>⚠️ المخالفات</small><strong>${x.v.length}</strong></div><div class="summary-box"><small>⏱️ تجاوز الاستراحة</small><strong>${x.breakOverages}</strong><small>${x.overageMinutes} د</small></div><div class="summary-box"><small>🚪 خروج بدون تبليغ</small><strong>${x.unnotifiedExits}</strong></div><div class="summary-box"><small>❌ غياب بدون إذن</small><strong>${x.unauthorizedAbsences}</strong></div><div class="summary-box"><small>🕐 التأخير</small><strong>${x.lateness}</strong></div><div class="summary-box"><small>☕ الاستراحات</small><strong>${x.breakCount}</strong></div><div class="summary-box"><small>📋 الأذونات</small><strong>${x.perms.length}</strong><small>موافق: ${x.approvedPermissions}</small></div><div class="summary-box"><small>⭐ التقييم</small><strong class="${x.compliance>=80?'success':x.compliance>=60?'warning':'danger'}">${evaluationRating(x.compliance)}</strong></div><div class="summary-box"><small>📉 الخصم</small><strong class="danger">-${x.penalty}</strong></div></div>`).join(''):'<p class="muted">لا توجد بيانات للموظف المحدد.</p>';
   await renderViolations(from,to,employeeId);
@@ -7674,13 +7674,15 @@ safe(()=>{const w=setInterval(()=>{const b=tb();if(!b)return;clearInterval(w);
 // 9,10) حلقة تقدم الاستراحة + تنبيه صوتي
 // ===== إنذار صوتي قوي مستمر حتى عودة الموظف =====
 let alarmCtx=null,alarmTimer=null,alarmOn=false;
+let userGestured=false;
 function getAlarmCtx(){
+ if(!userGestured)return null;
  if(!alarmCtx){const A=window.AudioContext||window.webkitAudioContext;if(!A)return null;alarmCtx=new A();}
  if(alarmCtx.state==='suspended')alarmCtx.resume().catch(()=>{});
  return alarmCtx;
 }
 // المتصفحات تمنع الصوت قبل أول تفاعل: نفعّل الصوت عند أول نقرة/لمسة/ضغطة مفتاح
-['click','touchstart','keydown'].forEach(ev=>document.addEventListener(ev,()=>safe(getAlarmCtx),{passive:true}));
+['click','touchstart','keydown'].forEach(ev=>document.addEventListener(ev,()=>{userGestured=true;safe(getAlarmCtx)},{passive:true}));
 // صفارة إنذار: نغمة حادة تتناوب بين تردّدين مع موجة مربّعة وصوت عالٍ
 function sirenBurst(){
  const A=getAlarmCtx();if(!A||A.state!=='running')return;
@@ -7694,13 +7696,13 @@ function sirenBurst(){
  o.start(t0);o2.start(t0);o.stop(t0+1.02);o2.stop(t0+1.02);
 }
 function startAlarm(){
- if(alarmOn||muted)return;alarmOn=true;
+ if(alarmOn||muted||!userGestured)return;alarmOn=true;
  sirenBurst();alarmTimer=setInterval(()=>{if(muted){stopAlarm();return}sirenBurst()},1150);
- try{if(navigator.vibrate)navigator.vibrate([400,150,400,150,400])}catch(e){}
+ try{if(userGestured&&navigator.vibrate)navigator.vibrate([400,150,400,150,400])}catch(e){}
 }
 function stopAlarm(){
  alarmOn=false;if(alarmTimer){clearInterval(alarmTimer);alarmTimer=null}
- try{if(navigator.vibrate)navigator.vibrate(0)}catch(e){}
+ try{if(userGestured&&navigator.vibrate)navigator.vibrate(0)}catch(e){}
 }
 function beep(){startAlarm()}
 const alarmAcked=new Set();
@@ -7730,6 +7732,11 @@ const nav=document.createElement('nav');nav.id='uNav';document.body.appendChild(
 setInterval(()=>safe(()=>{const hs=$$('.card h2').filter(h=>h.offsetParent),k=hs.map(h=>h.textContent).join('|');if(nav.dataset.k===k)return;nav.dataset.k=k;nav.innerHTML='';
  hs.forEach(h=>{const a=document.createElement('button');a.type='button';a.innerHTML='<i></i><span></span>';a.lastChild.textContent=h.textContent.trim();a.onclick=()=>h.scrollIntoView({behavior:'smooth',block:'start'});nav.appendChild(a)})}),2500);
 })();
+</script>
+<script>
+(function(){var v='v3-2026-10-16';console.log('%c[نظام الحضور] النسخة المعدلة '+v,'color:#0a0;font-weight:bold');
+document.addEventListener('DOMContentLoaded',function(){var b=document.createElement('div');b.textContent='نسخة '+v;
+b.style.cssText='position:fixed;bottom:6px;left:6px;z-index:99999;background:#0a7;color:#fff;font:11px sans-serif;padding:3px 8px;border-radius:8px;opacity:.85;pointer-events:none';document.body.appendChild(b);});})();
 </script>
 </body>
 </html>
