@@ -1511,6 +1511,60 @@ tbody button.break-action-btn.break-authorized::before { content:'🛡️' !impo
 }
 </style>
 
+
+<style id="final-break-row-design-fix">
+/* Stable compact table rows: break classes style the row, not the row as a button. */
+#dashboardEmployeeStatusSection table{width:100%!important;min-width:1120px!important;table-layout:fixed!important;border-collapse:separate!important;border-spacing:0!important}
+#dashboardEmployeeStatusSection table tbody tr.status-row-break{display:table-row!important;position:static!important;float:none!important;transform:none!important;box-shadow:none!important;min-height:0!important;height:auto!important}
+#dashboardEmployeeStatusSection table tbody tr.status-row-break::before,
+#dashboardEmployeeStatusSection table tbody tr.status-row-break::after{content:none!important;display:none!important}
+#dashboardEmployeeStatusSection table th,#dashboardEmployeeStatusSection table td{box-sizing:border-box!important;vertical-align:middle!important;line-height:1.45!important;overflow-wrap:normal!important;word-break:normal!important}
+#dashboardEmployeeStatusSection table tbody td{height:64px!important;max-height:none!important}
+#dashboardEmployeeStatusSection table tbody td:nth-child(1),#dashboardEmployeeStatusSection table tbody td:nth-child(5),#dashboardEmployeeStatusSection table tbody td:nth-child(7),#dashboardEmployeeStatusSection table tbody td:nth-child(8){white-space:nowrap!important;font-variant-numeric:tabular-nums!important}
+#dashboardEmployeeStatusSection .dashboard-employee-name{display:inline-block!important;max-width:100%!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;vertical-align:middle!important}
+#dashboardEmployeeStatusSection .dashboard-status-pill{display:inline-flex!important;align-items:center!important;justify-content:center!important;white-space:nowrap!important;min-height:32px!important;padding:6px 10px!important;border-radius:999px!important}
+#dashboardEmployeeStatusSection .dashboard-break-card{display:inline-flex!important;align-items:center!important;justify-content:center!important;gap:7px!important;max-width:100%!important;white-space:nowrap!important;padding:7px 10px!important;border:1px solid currentColor!important;border-radius:10px!important;font-size:clamp(11px,.9vw,14px)!important;font-weight:800!important;line-height:1.2!important;box-sizing:border-box!important}
+#dashboardEmployeeStatusSection .dashboard-break-icon{display:inline-flex!important;align-items:center!important;justify-content:center!important;font-size:17px!important;line-height:1!important;flex:0 0 auto!important}
+#dashboardEmployeeStatusSection .dashboard-break-smoking{background:#fff0c2!important;color:#7c4a03!important;border-color:#f4b942!important}
+#dashboardEmployeeStatusSection .dashboard-break-dinner{background:#dbeafe!important;color:#1e40af!important;border-color:#60a5fa!important}
+#dashboardEmployeeStatusSection .dashboard-break-emergency{background:#fee2e2!important;color:#991b1b!important;border-color:#f87171!important}
+#dashboardEmployeeStatusSection .dashboard-break-authorized{background:#ede9fe!important;color:#5b21b6!important;border-color:#a78bfa!important}
+#dashboardEmployeeStatusSection table tbody tr.status-row-break.break-smoking>td{background:#4a2f05!important;color:#fff!important}
+#dashboardEmployeeStatusSection table tbody tr.status-row-break.break-dinner>td{background:#12355b!important;color:#fff!important}
+#dashboardEmployeeStatusSection table tbody tr.status-row-break.break-emergency>td{background:#541b1b!important;color:#fff!important}
+#dashboardEmployeeStatusSection table tbody tr.status-row-break.break-authorized>td{background:#3d2b61!important;color:#fff!important}
+#dashboardEmployeeStatusSection table tbody tr.status-row-break>td{transition:background-color .18s ease,color .18s ease!important}
+#dashboardEmployeeStatusSection table tbody tr.status-row-break .dashboard-break-card{box-shadow:0 1px 3px #0002!important}
+/* Main live attendance table: same-height rows, compact break badge and no vertical time wrapping. */
+#employeeTableBody>tr{height:68px!important}
+#employeeTableBody>tr>td{box-sizing:border-box!important;vertical-align:middle!important;line-height:1.45!important;overflow-wrap:normal!important;word-break:normal!important}
+#employeeTableBody>tr>td:nth-child(3),#employeeTableBody>tr>td:nth-child(4),#employeeTableBody>tr>td:nth-child(5),#employeeTableBody>tr>td:nth-child(6),#employeeTableBody>tr>td:nth-child(7){white-space:nowrap!important}
+#employeeTableBody .break-status-card{display:inline-flex!important;align-items:center!important;justify-content:center!important;gap:6px!important;padding:7px 10px!important;border-radius:10px!important;border:1px solid currentColor!important;white-space:nowrap!important;max-width:100%!important;font-size:12px!important;font-weight:800!important;line-height:1.2!important;box-sizing:border-box!important}
+#employeeTableBody .break-status-icon{font-size:16px!important;line-height:1!important}
+#employeeTableBody .break-status-smoking{background:#fff0c2!important;color:#7c4a03!important;border-color:#f4b942!important}
+#employeeTableBody .break-status-dinner{background:#dbeafe!important;color:#1e40af!important;border-color:#60a5fa!important}
+#employeeTableBody .break-status-emergency{background:#fee2e2!important;color:#991b1b!important;border-color:#f87171!important}
+#employeeTableBody .break-status-authorized{background:#ede9fe!important;color:#5b21b6!important;border-color:#a78bfa!important}
+#employeeTableBody>tr.employee-break-row.break-smoking>td{background:#4a2f05!important;color:#fff!important}
+#employeeTableBody>tr.employee-break-row.break-dinner>td{background:#12355b!important;color:#fff!important}
+#employeeTableBody>tr.employee-break-row.break-emergency>td{background:#541b1b!important;color:#fff!important}
+#employeeTableBody>tr.employee-break-row.break-authorized>td{background:#3d2b61!important;color:#fff!important}
+#employeeTableBody>tr.employee-break-row::before,#employeeTableBody>tr.employee-break-row::after{content:none!important;display:none!important}
+#employeeTableBody .actions{display:flex!important;flex-wrap:wrap!important;align-items:center!important;justify-content:center!important;gap:6px!important;min-width:0!important}
+#employeeTableBody .actions .break-action-btn{min-width:88px!important;min-height:38px!important;padding:8px 10px!important;font-size:12px!important;white-space:nowrap!important}
+/* Important: break color/icon rules must only affect actual action buttons, never TR/TD. */
+button.break-action-btn.break-smoking{background:linear-gradient(135deg,#fb923c,#ea580c)!important;color:#fff!important}
+button.break-action-btn.break-dinner{background:linear-gradient(135deg,#38bdf8,#2563eb)!important;color:#fff!important}
+button.break-action-btn.break-emergency{background:linear-gradient(135deg,#fb7185,#dc2626)!important;color:#fff!important}
+button.break-action-btn.break-authorized{background:linear-gradient(135deg,#a78bfa,#6d28d9)!important;color:#fff!important}
+@media(max-width:700px){
+ #dashboardEmployeeStatusSection .table-wrap{overflow-x:auto!important}
+ #dashboardEmployeeStatusSection table{min-width:1000px!important}
+ #employeeTableBody>tr>td{padding:8px 6px!important}
+ #employeeTableBody .actions .break-action-btn{min-width:76px!important;padding:7px 8px!important}
+}
+</style>
+
 </head>
 
 <body>
@@ -4129,9 +4183,17 @@ function renderTable(){
 
   if(activeBreak){
 
+   const breakTypeForStatus=String(activeBreak.break_type||'authorized').toLowerCase();
+   const breakMetaForStatus={
+    smoking:{icon:'🚬',label:'تدخين'},
+    dinner:{icon:'🍽️',label:'عشاء'},
+    emergency:{icon:'🚨',label:'طارئة'},
+    authorized:{icon:'🛡️',label:'مصرّح بها'}
+   }[breakTypeForStatus]||{icon:'☕',label:'استراحة'};
    status=`
-    <span class="break">
-     في استراحة
+    <span class="break-status-card break-status-${['smoking','dinner','emergency','authorized'].includes(breakTypeForStatus)?breakTypeForStatus:'authorized'}">
+     <span class="break-status-icon" aria-hidden="true">${breakMetaForStatus.icon}</span>
+     <span>في استراحة · ${breakMetaForStatus.label}</span>
     </span>
    `;
 
@@ -4636,12 +4698,20 @@ function updateCustomDashboard(){
    statusBody.innerHTML=employeesList.map((employee,index)=>{
     const attendance=getAttendance(employee.id);
     const activeBreak=getActiveBreak(employee.id);
-    let label,cls,rowCls,breakLabel='—',breakDuration='—';
+    let label,cls,rowCls,breakLabel='—',breakCellHtml='—',breakDuration='—';
     if(activeBreak){
      label='في استراحة'; cls='dashboard-status-break';
      const breakType=String(activeBreak.break_type||'authorized').toLowerCase();
-     rowCls='status-row-break break-'+(['smoking','dinner','emergency','authorized'].includes(breakType)?breakType:'authorized');
-     breakLabel=({smoking:'تدخين',dinner:'طعام',emergency:'طارئة',authorized:'مصرّح بها'}[breakType]||activeBreak.break_type||'استراحة');
+     const safeBreakType=['smoking','dinner','emergency','authorized'].includes(breakType)?breakType:'authorized';
+     rowCls='status-row-break break-'+safeBreakType;
+     const breakMeta={
+      smoking:{icon:'🚬',label:'تدخين'},
+      dinner:{icon:'🍽️',label:'عشاء'},
+      emergency:{icon:'🚨',label:'طارئة'},
+      authorized:{icon:'🛡️',label:'مصرّح بها'}
+     }[safeBreakType];
+     breakLabel=breakMeta.label;
+     breakCellHtml=`<span class="dashboard-break-card dashboard-break-${safeBreakType}"><span class="dashboard-break-icon" aria-hidden="true">${breakMeta.icon}</span><span>${breakMeta.label}</span></span>`;
      breakDuration=dashboardMinutesToClock(minutesBetween(activeBreak.start_time,new Date()));
     }else if(attendance?.present){
      label='متواجد'; cls='dashboard-status-present'; rowCls='status-row-present';
@@ -4652,7 +4722,7 @@ function updateCustomDashboard(){
     const photoHtml=photo?`<img class="dashboard-employee-photo" src="${esc(photo)}" alt="${esc(employee.name||'الموظف')}">`:'<span class="dashboard-employee-photo">👤</span>';
     const checkIn=attendance?.check_in?formatTime(attendance.check_in):'—';
     const workDuration=dashboardMinutesToClock(getTodayActualWorkMinutes(employee.id));
-    return `<tr class="${rowCls}"><td>${index+1}</td><td>${photoHtml}</td><td><strong>${esc(employee.name||'—')}</strong></td><td><span class="dashboard-status-pill ${cls}">${label}</span></td><td>${esc(checkIn)}</td><td>${esc(breakLabel)}</td><td>${esc(breakDuration)}</td><td>${esc(workDuration)}</td></tr>`;
+    return `<tr class="${rowCls}"><td>${index+1}</td><td>${photoHtml}</td><td><strong class="dashboard-employee-name">${esc(employee.name||'—')}</strong></td><td><span class="dashboard-status-pill ${cls}">${label}</span></td><td class="dashboard-time-cell">${esc(checkIn)}</td><td>${breakCellHtml}</td><td class="dashboard-time-cell">${esc(breakDuration)}</td><td class="dashboard-time-cell">${esc(workDuration)}</td></tr>`;
    }).join('');
   }
  }
@@ -5887,7 +5957,7 @@ async function addEmployeeViolation(){
 async function cancelEmployeeViolation(id){
  if(!isManagement()||!confirm('إلغاء هذه المخالفة؟ سيتم إرجاع نقاطها للتقييم.'))return;
  const {data:old,error:readError}=await supabaseClient.from('employee_violations').select('employee_id,violation_type,points,violation_date,note').eq('id',id).maybeSingle();if(readError||!old)return showToast('تعذر قراءة المخالفة');
- const {error}=await supabaseClient.from('employee_violations').update({status:'cancelled',cancelled_by:currentUser?.id||null,cancelled_at:new Date().toISOString(),cancel_reason:'إلغاء من الإدارة'}).eq('id',id);if(error){console.error(error);return showToast('تعذر إلغاء المخالفة');}
+ const {error}=await supabaseClient.from('employee_violations').update({status:'cancelled',cancelled_by:currentUser?.id||null,cancelled_at:new Date().toISOString(),cancel_reason:'إلغاء من الإدارة'}).eq('id',id);if(error){console.error(error);return showToast('تعذر إلغاء المخالفة: '+(error.message||'تحقق من صلاحيات قاعدة البيانات'));}
  const liveRange=currentShiftEvaluationRange();if(String(old.violation_date)>=liveRange.from&&String(old.violation_date)<=liveRange.to)currentEvaluationViolations=filterViolationsForShift(await loadViolations(liveRange.from,liveRange.to),liveRange);renderTable();updateStats();const employee=(allEmployeesList||[]).find(e=>Number(e.id)===Number(old.employee_id));await writeManagementLog('إلغاء مخالفة',old.employee_id,employee?.name||'',JSON.stringify({id,type:old.violation_type,points:old.points,date:old.violation_date}));showToast('تم إلغاء المخالفة وإرجاع نقاطها للتقييم');await generateEmployeeEvaluation();
 }
 async function deleteEmployeeViolation(id){return cancelEmployeeViolation(id);}
@@ -5917,9 +5987,11 @@ async function syncAutomaticBreakViolations(from,to,employeeId=''){
   .sort((a,b)=>new Date(a.start_time)-new Date(b.start_time));
 
  async function insertOnce({employee,type,points,date,note,identity}){
-  let checkQuery=supabaseClient.from('employee_violations').select('id')
+  // افحص وجود المخالفة بأي حالة، وليس المخالفات الفعّالة فقط.
+  // إذا ألغت الإدارة مخالفة تلقائية، يجب ألا يعيدها المزامن عند تحديث التقييم.
+  let checkQuery=supabaseClient.from('employee_violations').select('id,status')
    .eq('employee_id',employee.id).eq('violation_type',type)
-   .eq('violation_date',date).eq('status','active');
+   .eq('violation_date',date);
   checkQuery=identity?checkQuery.ilike('note',`%break:${identity}%`):checkQuery.eq('note',note);
   const {data:exists,error:checkError}=await checkQuery.limit(1);
   if(checkError){console.error('AUTO VIOLATION CHECK ERROR:',type,checkError);return;}
