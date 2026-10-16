@@ -1791,11 +1791,13 @@ html[data-theme] #uNav button{display:flex;align-items:center;gap:8px;padding:6p
    <p class="muted" style="margin-top:-6px;margin-bottom:14px">يستطيع كل موظف تسجيل رقم الطلب واسم المطعم وسبب التأخير، وتظهر السجلات للجميع.</p>
    <form id="lateOrderForm" onsubmit="submitLateOrder(event)">
     <div class="form" style="grid-template-columns:1fr 1fr">
-     <input id="lateOrderNumber" required maxlength="100" placeholder="رقم الطلب">
-     <input id="lateRestaurantName" required maxlength="200" placeholder="اسم المطعم">
+     <input id="lateOrderNumber" required maxlength="100" placeholder="رقم الطلب" autocomplete="off">
+     <input id="lateRestaurantName" required maxlength="200" placeholder="اسم المطعم" list="lateRestaurantList" autocomplete="off"><datalist id="lateRestaurantList"></datalist>
     </div>
+    <div id="lateOrderDupHint" style="display:none;margin-top:8px;padding:8px 12px;border-radius:8px;background:#fef3c7;color:#92400e;font-size:13px"></div>
     <div style="margin-top:10px">
-     <select id="lateOrderReasonSelect" required onchange="handleLateReasonChange()" style="width:100%;padding:12px;border-radius:8px">
+     <div id="lateReasonChips"></div>
+     <select id="lateOrderReasonSelect" onchange="handleLateReasonChange()" style="width:100%;padding:12px;border-radius:8px">
       <option value="">اختر سبب التأخير</option>
      </select>
      <textarea id="lateOrderReason" maxlength="2000" placeholder="اكتب تفاصيل السبب الآخر" style="display:none;margin-top:10px" ></textarea>
@@ -1820,6 +1822,8 @@ html[data-theme] #uNav button{display:flex;align-items:center;gap:8px;padding:6p
     <input id="lateOrderSearch" type="search" placeholder="رقم الطلب بالكامل" aria-label="رقم الطلب">
     <input id="lateOrderFromDate" type="date" title="من تاريخ" aria-label="من تاريخ">
     <input id="lateOrderToDate" type="date" title="إلى تاريخ" aria-label="إلى تاريخ">
+    <select id="lateOrderMonthM" title="بحث بشهر كامل" aria-label="الشهر" style="padding:8px;border-radius:8px"><option value="">الشهر</option><option value="1">1 - كانون الثاني</option><option value="2">2 - شباط</option><option value="3">3 - آذار</option><option value="4">4 - نيسان</option><option value="5">5 - أيار</option><option value="6">6 - حزيران</option><option value="7">7 - تموز</option><option value="8">8 - آب</option><option value="9">9 - أيلول</option><option value="10">10 - تشرين الأول</option><option value="11">11 - تشرين الثاني</option><option value="12">12 - كانون الأول</option></select>
+    <select id="lateOrderMonthY" title="السنة" aria-label="السنة" style="padding:8px;border-radius:8px"></select>
     <input id="lateOrderSearchDays" type="number" min="1" max="36500" placeholder="آخر كم يوم؟" title="عدد الأيام السابقة" aria-label="عدد الأيام">
     <button type="button" class="btn-blue" onclick="searchLateOrders()">بحث</button>
     <button type="button" class="btn-dark" onclick="resetLateOrderSearch()">مسح البحث</button>
@@ -7272,6 +7276,7 @@ function handleLateReasonChange(){
  field.style.display=other?'block':'none';
  field.required=other;
  if(!other) field.value='';
+ if(window.syncLateChips) window.syncLateChips();
 }
 
 async function loadLateOrderReasons(){
@@ -7293,6 +7298,7 @@ async function loadLateOrderReasons(){
 }
 
 function renderLateOrderReasonAdmin(){
+ try{if(window.renderLateReasonChips) window.renderLateReasonChips();}catch(_){}
  const panel=document.getElementById('lateReasonAdminPanel');
  const list=document.getElementById('lateReasonsAdminList');
  if(!panel||!list) return;
@@ -7403,6 +7409,7 @@ function getLateOrdersFilteredRows(){
  const toDate=(document.getElementById('lateOrderToDate')?.value||'').trim();
  const daysRaw=(document.getElementById('lateOrderSearchDays')?.value||'').trim();
  const days=daysRaw ? parseInt(daysRaw,10) : 0;
+ const fRest=document.getElementById('lateOrderFRest')?.value||'', fReason=document.getElementById('lateOrderFReason')?.value||'', fEmp=document.getElementById('lateOrderFEmp')?.value||'';
  if(fromDate && toDate && fromDate>toDate){
   showToast('تاريخ البداية يجب أن يكون قبل تاريخ النهاية أو مساويًا له');
   return [];
@@ -7414,6 +7421,9 @@ function getLateOrdersFilteredRows(){
  return lateOrdersCache.filter(r=>{
   // مطابقة رقم الطلب بالكامل وليس جزءًا منه.
   if(orderQuery && String(r.order_number||'').trim().toLocaleLowerCase()!==orderQuery) return false;
+  if(fRest && r.restaurant_name!==fRest) return false;
+  if(fReason && r.delay_reason!==fReason) return false;
+  if(fEmp && r.employee_name!==fEmp) return false;
   const rowDate=r.created_at?baghdadDateOnly(new Date(r.created_at)):'';
   if(fromDate && (!rowDate || rowDate<fromDate)) return false;
   if(toDate && (!rowDate || rowDate>toDate)) return false;
@@ -7422,34 +7432,48 @@ function getLateOrdersFilteredRows(){
  });
 }
 
-function searchLateOrders(){
+async function searchLateOrders(){
  if(!isAdmin()){showToast('البحث في سجل التأخيرات متاح للمسؤول فقط');return;}
+ if(!lateOrdersFull){const m=document.getElementById('lateOrdersMessage');if(m)m.textContent='جارٍ تحميل كل السجلات للبحث...';await loadLateOrders(true,true);}
+ lateOrdersShown=LATE_PAGE;
  lateOrdersSearchResults=getLateOrdersFilteredRows();
  renderLateOrders(true);
 }
 
+const LATE_PAGE=50, LATE_LIMIT=500;
+let lateOrdersShown=LATE_PAGE, lateOrdersWantFull=false, lateOrdersFull=true;
+function lateMyName(){return currentProfile?(currentProfile.full_name||currentProfile.username||'موظف'):'';}
+function lateOrderCanEdit(r){
+ if(r._q||String(r.id).startsWith('tmp_')||!r.created_at) return false;
+ if(isAdmin()) return true;
+ return !!lateMyName()&&r.employee_name===lateMyName()&&(Date.now()-new Date(r.created_at).getTime())<10*60000;
+}
+function showMoreLateOrders(){lateOrdersShown+=LATE_PAGE;renderLateOrders(lateOrdersSearchResults!==null);}
 function renderLateOrders(useSearchResults=false){
  const toolbar=document.getElementById('lateOrdersSearchToolbar');
  if(toolbar) toolbar.style.display=isAdmin()?'':'none';
  const body=document.getElementById('lateOrdersBody');
  const msg=document.getElementById('lateOrdersMessage');
  if(!body) return;
- const hasSearch=((document.getElementById('lateOrderSearch')?.value||'').trim() ||
-  (document.getElementById('lateOrderFromDate')?.value||'') ||
-  (document.getElementById('lateOrderToDate')?.value||'') ||
-  (document.getElementById('lateOrderSearchDays')?.value||'').trim());
+ lateOrdersCache.forEach((r,i)=>{r._k=i;});
+ const v=id=>(document.getElementById(id)?.value||'').trim();
+ const hasSearch=v('lateOrderSearch')||v('lateOrderFromDate')||v('lateOrderToDate')||v('lateOrderSearchDays')||v('lateOrderFRest')||v('lateOrderFReason')||v('lateOrderFEmp');
  const filtered=useSearchResults && lateOrdersSearchResults!==null
   ? lateOrdersSearchResults
   : (hasSearch ? getLateOrdersFilteredRows() : lateOrdersCache);
  if(!filtered.length){
   body.innerHTML='<tr><td colspan="5">لا توجد سجلات مطابقة لمعايير البحث.</td></tr>';
  }else{
-  body.innerHTML=filtered.map(r=>{
+  const page=filtered.slice(0,lateOrdersShown);
+  body.innerHTML=page.map(r=>{
    const date=r.created_at?new Date(r.created_at).toLocaleString('ar-IQ'):'—';
-   return `<tr><td>${esc(date)}</td><td>${esc(r.order_number)}</td><td>${esc(r.restaurant_name)}</td><td style="white-space:pre-wrap;text-align:right">${esc(r.delay_reason)}</td><td>${esc(r.employee_name||'—')}</td></tr>`;
-  }).join('');
+   const tag=r._q?' <small style="color:#d97706">⏳ بانتظار الإرسال</small>':(String(r.id).startsWith('tmp_')?' <small style="color:#d97706">⏳ جارٍ الحفظ</small>':'');
+   const acts=lateOrderCanEdit(r)?` <span class="lo-acts"><button type="button" class="lo-act" data-act="edit" data-k="${r._k}" title="تعديل">✏️</button><button type="button" class="lo-act" data-act="del" data-k="${r._k}" title="حذف">🗑️</button></span>`:'';
+   return `<tr><td>${esc(date)}</td><td>${esc(r.order_number)}</td><td>${esc(r.restaurant_name)}</td><td style="white-space:pre-wrap;text-align:right">${esc(r.delay_reason)}</td><td>${esc(r.employee_name||'—')}${tag}${acts}</td></tr>`;
+  }).join('')+(filtered.length>page.length?`<tr><td colspan="5" style="text-align:center"><button type="button" class="btn-dark" onclick="showMoreLateOrders()">عرض ${Math.min(LATE_PAGE,filtered.length-page.length)} أخرى (المتبقي ${filtered.length-page.length})</button></td></tr>`:'');
  }
- if(msg) msg.textContent=`السجلات المعروضة: ${filtered.length} من أصل ${lateOrdersCache.length}.`;
+ if(msg) msg.textContent=`السجلات المعروضة: ${Math.min(filtered.length,lateOrdersShown)} من ${filtered.length} (إجمالي المحمّل ${lateOrdersCache.length}).`+(lateOrdersFull?'':' — آخر السجلات فقط؛ البحث والتنزيل يحمّلان الكل.');
+ if(window.lateOrdersAfterRender) window.lateOrdersAfterRender(filtered);
 }
 
 function fetchLateOrdersJsonp(url,timeoutMs=15000){
@@ -7478,7 +7502,7 @@ function mergePendingLateOrders(){
  for(let i=pendingLateOrders.length-1;i>=0;i--){
   const p=pendingLateOrders[i];
   const found=lateOrdersCache.some(r=>r.order_number===p.order_number&&r.restaurant_name===p.restaurant_name&&r.delay_reason===p.delay_reason);
-  if(found||now-new Date(p.created_at).getTime()>120000) pendingLateOrders.splice(i,1);
+  if((found&&!p._q)||(!p._q&&now-new Date(p.created_at).getTime()>120000)) pendingLateOrders.splice(i,1);
   else lateOrdersCache.unshift(p);
  }
  lateOrdersCache.sort((a,b)=>new Date(b.created_at||0)-new Date(a.created_at||0));
@@ -7487,16 +7511,19 @@ function mergePendingLateOrders(){
 const LATE_ORDERS_CACHE_KEY='late_orders_sheet_cache_v1';
 let lateOrdersSheetsInflight=null, lateOrdersRetryTimer=null, lateOrdersRetryCount=0;
 
-// طلب واحد فقط إلى Google Sheets في نفس الوقت (حتى لا تتراكم الطلبات على Apps Script) + إعادة محاولة واحدة
-function fetchLateOrdersFromSheets(){
- if(lateOrdersSheetsInflight) return lateOrdersSheetsInflight;
- lateOrdersSheetsInflight=(async()=>{
+// طلب واحد فقط إلى Google Sheets في نفس الوقت + إعادة محاولة واحدة. full=false يطلب آخر 500 سجل فقط (أسرع)
+function fetchLateOrdersFromSheets(full=false){
+ const cur=lateOrdersSheetsInflight;
+ if(cur&&(cur.full||!full)) return cur.p;
+ const url=LATE_ORDERS_SHEETS_WEBHOOK+(full?'':'?limit='+LATE_LIMIT);
+ const p=(async()=>{
   try{
-   try{return await fetchLateOrdersJsonp(LATE_ORDERS_SHEETS_WEBHOOK,25000);}
-   catch(_){return await fetchLateOrdersJsonp(LATE_ORDERS_SHEETS_WEBHOOK,25000);}
-  }finally{lateOrdersSheetsInflight=null;}
+   try{return await fetchLateOrdersJsonp(url,25000);}
+   catch(_){return await fetchLateOrdersJsonp(url,25000);}
+  }finally{if(lateOrdersSheetsInflight&&lateOrdersSheetsInflight.p===p) lateOrdersSheetsInflight=null;}
  })();
- return lateOrdersSheetsInflight;
+ lateOrdersSheetsInflight={full,p};
+ return p;
 }
 function mapLateSheetRows(rows){
  return rows.map((r,i)=>({
@@ -7522,8 +7549,10 @@ function applyLateOrdersRows(rows){
  renderLateOrders();
 }
 
-async function loadLateOrders(silent=false){
+async function loadLateOrders(silent=false,full=false){
+ if(full) lateOrdersWantFull=true;
  updateLateOrdersAdminControls();
+ try{processLateQueue();}catch(_){}
  const body=document.getElementById('lateOrdersBody');
  const msg=document.getElementById('lateOrdersMessage');
  if(!body) return;
@@ -7532,7 +7561,7 @@ async function loadLateOrders(silent=false){
  // 1) اعرض آخر نسخة محفوظة من الشيت فوراً (إن وُجدت)
  if(!shown){
   try{const c=JSON.parse(localStorage.getItem(LATE_ORDERS_CACHE_KEY)||'null');
-   if(c&&Array.isArray(c.rows)&&c.rows.length){applyLateOrdersRows(c.rows);shown=true;if(msg)msg.textContent+=' — آخر نسخة محفوظة، جارٍ المزامنة مع Google Sheets...';}
+   if(c&&Array.isArray(c.rows)&&c.rows.length){applyLateOrdersRows(c.rows);shown=true;lateOrdersFull=false;if(msg)msg.textContent+=' — آخر نسخة محفوظة، جارٍ المزامنة مع Google Sheets...';}
   }catch(_){}
  }
  if(!shown) body.innerHTML='<tr><td colspan="5">جارٍ تحميل سجل الطلبات...</td></tr>';
@@ -7546,12 +7575,13 @@ async function loadLateOrders(silent=false){
  // 3) الشيت هو المصدر الأساسي
  try{
   if(!LATE_ORDERS_SHEETS_WEBHOOK) throw new Error('رابط Google Sheets غير مضبوط.');
-  const result=await fetchLateOrdersFromSheets();
+  const result=await fetchLateOrdersFromSheets(lateOrdersWantFull);
   if(mySeq!==lateOrdersLoadSeq) return;
   if(!result || result.ok!==true || !Array.isArray(result.rows)){
    throw new Error('واجهة Google Sheets لا تُرجع السجلات بعد. حدّث doGet في Apps Script ليُرجع rows ثم أعد نشر التطبيق.');
   }
   sheetsLoaded=true;
+  lateOrdersFull=lateOrdersWantFull||typeof result.total!=='number'||result.rows.length>=result.total;
   const rows=mapLateSheetRows(result.rows);
   applyLateOrdersRows(rows);
   try{localStorage.setItem(LATE_ORDERS_CACHE_KEY,JSON.stringify({t:Date.now(),rows:rows.slice(0,3000)}));}catch(_){}
@@ -7577,15 +7607,17 @@ async function loadLateOrders(silent=false){
 
 function resetLateOrderSearch(){
  if(!isAdmin()){showToast('هذه الميزة للمسؤول فقط');return;}
- ['lateOrderSearch','lateOrderFromDate','lateOrderToDate','lateOrderSearchDays'].forEach(id=>{
+ lateOrdersWantFull=false;lateOrdersShown=LATE_PAGE;
+ ['lateOrderSearch','lateOrderFromDate','lateOrderToDate','lateOrderSearchDays','lateOrderMonthM','lateOrderFRest','lateOrderFReason','lateOrderFEmp'].forEach(id=>{
   const el=document.getElementById(id); if(el) el.value='';
  });
  lateOrdersSearchResults=null;
  renderLateOrders();
 }
 
-function downloadLateOrders(){
+async function downloadLateOrders(){
  if(!isAdmin()){showToast('تنزيل سجل التأخيرات متاح للمسؤول فقط');return;}
+ if(!lateOrdersFull) await loadLateOrders(true,true);
  const rows=getLateOrdersFilteredRows();
  if(!rows.length){showToast('لا توجد سجلات لتنزيلها');return;}
  const headers=['تاريخ التسجيل','رقم الطلب','اسم المطعم','سبب التأخير','الموظف المسجل'];
@@ -7600,6 +7632,16 @@ function downloadLateOrders(){
  document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);
 }
 
+const LATE_QUEUE_KEY='late_orders_queue_v1';
+const LATE_SEL='id,order_number,restaurant_name,delay_reason,employee_name,created_at';
+let lateQueueBusy=false, lateQueueTimer=null, lateDupArmed='';
+function lateQueueLoad(){try{return JSON.parse(localStorage.getItem(LATE_QUEUE_KEY)||'[]')||[];}catch(_){return [];}}
+function lateQueueSave(q){try{localStorage.setItem(LATE_QUEUE_KEY,JSON.stringify(q));}catch(_){}}
+function lateSheetPost(payload){
+ if(!LATE_ORDERS_SHEETS_WEBHOOK) return;
+ fetch(LATE_ORDERS_SHEETS_WEBHOOK,{method:'POST',mode:'no-cors',redirect:'follow',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(payload)}).catch(e=>console.warn('Google Sheets sync failed',e));
+}
+
 function submitLateOrder(event){
  event.preventDefault();
  const msg=document.getElementById('lateOrdersMessage');
@@ -7611,55 +7653,255 @@ function submitLateOrder(event){
  const delayReason=selectedReason==='__other__'?otherReason:selectedReason;
  if(!orderNumber||!restaurantName||!delayReason){msg.textContent='يرجى إدخال رقم الطلب واسم المطعم واختيار السبب أو كتابة السبب الآخر.';return;}
  if(!currentUser||!currentProfile){msg.textContent='يجب تسجيل الدخول أولاً.';return;}
- // فحص التكرار من الذاكرة المحلية (فوري، بدون اتصال بالإنترنت)
- const isDup=lateOrdersCache.some(r=>String(r.order_number||'').trim()===orderNumber);
- if(isDup&&!confirm('يوجد سجل سابق بنفس رقم الطلب. هل تريد تسجيله مرة ثانية؟')){msg.textContent='تم إلغاء التسجيل لتجنب التكرار.';return;}
- const row={order_number:orderNumber,restaurant_name:restaurantName,delay_reason:delayReason,employee_id:currentProfile.employee_id||null,employee_name:currentProfile.full_name||currentProfile.username||'موظف',created_by:currentUser.id};
- // عرض الطلب فوراً في الجدول
- const temp={id:'tmp_'+Date.now()+'_'+Math.random().toString(36).slice(2),order_number:orderNumber,restaurant_name:restaurantName,delay_reason:delayReason,employee_name:row.employee_name,created_at:new Date().toISOString()};
- pendingLateOrders.push(temp);
- lateOrdersCache=[temp,...lateOrdersCache];
- // تفريغ الحقول فوراً ليستطيع المستخدم كتابة الطلب التالي
+ // تنبيه التكرار: يظهر تحت الخانة، والتسجيل يحتاج ضغطة ثانية للتأكيد
+ const isDup=[...pendingLateOrders,...lateOrdersCache].some(r=>String(r.order_number||'').trim()===orderNumber);
+ if(isDup&&lateDupArmed!==orderNumber){
+  lateDupArmed=orderNumber;
+  if(window.lateUpdateDupHint) window.lateUpdateDupHint(true);
+  msg.textContent='هذا الرقم مسجل سابقاً. اضغط "تسجيل" مرة ثانية للتأكيد.';
+  return;
+ }
+ lateDupArmed='';
+ const row={order_number:orderNumber,restaurant_name:restaurantName,delay_reason:delayReason,employee_id:currentProfile.employee_id||null,employee_name:lateMyName(),created_by:currentUser.id};
+ const item={uid:'q'+Date.now()+Math.random().toString(36).slice(2,7),row,ts:new Date().toISOString(),tries:0};
+ const q=lateQueueLoad();q.push(item);lateQueueSave(q);   // يُحفظ بالمتصفح أولاً حتى لا يضيع
+ lateAddTemp(item);
  document.getElementById('lateOrderForm').reset();handleLateReasonChange();
+ if(window.lateUpdateDupHint) window.lateUpdateDupHint();
  renderLateOrders();
  msg.textContent='جارٍ حفظ الطلب '+orderNumber+' بالخلفية... تقدر تكتب الطلب التالي.';
  numEl.focus();
- saveLateOrderInBackground(row,temp);
+ processLateQueue();
+}
+function lateAddTemp(item){
+ if(pendingLateOrders.some(p=>p._uid===item.uid)) return null;
+ const temp={id:'tmp_'+item.uid,_uid:item.uid,_q:true,order_number:item.row.order_number,restaurant_name:item.row.restaurant_name,delay_reason:item.row.delay_reason,employee_name:item.row.employee_name,created_at:item.ts};
+ pendingLateOrders.push(temp);lateOrdersCache=[temp,...lateOrdersCache];
+ return temp;
 }
 
-async function saveLateOrderInBackground(row,temp){
+async function processLateQueue(){
+ if(lateQueueBusy||!currentUser) return;
+ lateQueueBusy=true;
+ const msg=document.getElementById('lateOrdersMessage');
+ let retry=false;
+ try{
+  const mine=lateQueueLoad().filter(it=>it.row&&it.row.created_by===currentUser.id);
+  if(mine.length&&mine.some(it=>lateAddTemp(it))) renderLateOrders();
+  for(const item of mine){
+   const temp=pendingLateOrders.find(p=>p._uid===item.uid);
+   try{
+    let data=null;
+    if(item.tries>0){ // بعد محاولة فاشلة: تأكد أن الطلب لم يُحفظ فعلاً (لتجنب التكرار)
+     const since=new Date(new Date(item.ts).getTime()-60000).toISOString();
+     const chk=await supabaseClient.from('late_orders').select(LATE_SEL).eq('order_number',item.row.order_number).eq('created_by',item.row.created_by).gte('created_at',since).limit(1);
+     if(!chk.error&&chk.data&&chk.data.length) data=chk.data[0];
+    }
+    if(!data){
+     const r=await supabaseClient.from('late_orders').insert(item.row).select(LATE_SEL).single();
+     if(r.error) throw r.error;
+     data=r.data;
+    }
+    lateSheetPost({...item.row,created_at:data.created_at});
+    if(temp){temp.created_at=data.created_at;temp.id=data.id;temp._q=false;}
+    lateQueueSave(lateQueueLoad().filter(x=>x.uid!==item.uid));
+    if(msg) msg.textContent='✓ تم حفظ الطلب '+item.row.order_number+'.';
+    scheduleLateOrdersRefresh(15000);
+   }catch(e){
+    console.error('submitLateOrder',e);
+    if(e&&e.code){ // رفض من الخادم (صلاحيات/بيانات) — لا فائدة من إعادة المحاولة
+     lateQueueSave(lateQueueLoad().filter(x=>x.uid!==item.uid));
+     const i=pendingLateOrders.indexOf(temp); if(i>-1) pendingLateOrders.splice(i,1);
+     lateOrdersCache=lateOrdersCache.filter(r=>r!==temp);
+     if(msg) msg.textContent='لم يتم حفظ الطلب '+item.row.order_number+' ('+item.row.restaurant_name+'): '+(e.message||'تأكد من إعداد جدول late_orders وصلاحياته.')+' — أعد تسجيله.';
+     try{showToast('لم يتم حفظ الطلب '+item.row.order_number+' — أعد تسجيله')}catch(_){}
+    }else{ // انقطاع إنترنت: يبقى بالطابور ويعاد إرساله تلقائياً
+     item.tries=(item.tries||0)+1;
+     lateQueueSave(lateQueueLoad().map(x=>x.uid===item.uid?item:x));
+     if(msg) msg.textContent='لا يوجد اتصال — الطلب '+item.row.order_number+' محفوظ بجهازك وسيُرسل تلقائياً عند رجوع الإنترنت.';
+     retry=true;break;
+    }
+   }
+  }
+  renderLateOrders();
+ }finally{lateQueueBusy=false;}
+ if(retry){clearTimeout(lateQueueTimer);lateQueueTimer=setTimeout(processLateQueue,15000);}
+}
+window.addEventListener('online',()=>processLateQueue());
+setInterval(()=>{if(lateQueueLoad().length) processLateQueue();},30000);
+
+async function lateFindDbRow(r){
+ const {data,error}=await supabaseClient.from('late_orders').select('id,created_at').eq('order_number',r.order_number).order('created_at',{ascending:false}).limit(20);
+ if(error) throw error;
+ const t=new Date(r.created_at).getTime();
+ return (data||[]).find(x=>Math.abs(new Date(x.created_at).getTime()-t)<3000)||null;
+}
+async function lateDeleteOrder(r){
  const msg=document.getElementById('lateOrdersMessage');
  try{
-  const {data,error}=await supabaseClient.from('late_orders').insert(row).select('id,order_number,restaurant_name,delay_reason,employee_name,created_at').single();
-  if(error) throw error;
-  temp.created_at=data.created_at;
-  if(LATE_ORDERS_SHEETS_WEBHOOK){
-   // يُرسل للشيت بدون انتظار الرد (Apps Script بطيء)
-   fetch(LATE_ORDERS_SHEETS_WEBHOOK,{
-    method:'POST',mode:'no-cors',redirect:'follow',
-    headers:{'Content-Type':'text/plain;charset=utf-8'},
-    body:JSON.stringify({...row,created_at:data.created_at})
-   }).catch(err=>{
-    console.warn('Google Sheets sync failed',err);
-    if(msg) msg.textContent='حُفظ الطلب '+row.order_number+' في النظام، لكن تعذر إرسال نسخة إلى Google Sheets.';
-   });
-  }
-  if(msg) msg.textContent='✓ تم حفظ الطلب '+row.order_number+'.';
+  const db=await lateFindDbRow(r);
+  if(db){const {data,error}=await supabaseClient.from('late_orders').delete().eq('id',db.id).select('id'); if(error) throw error; if(!data||!data.length) throw new Error('ليس لديك صلاحية حذف هذا الطلب.');}
+  lateSheetPost({action:'delete',order_number:r.order_number,created_at:r.created_at,employee_name:r.employee_name});
+  lateOrdersCache=lateOrdersCache.filter(x=>x!==r);
+  if(lateOrdersSearchResults) lateOrdersSearchResults=lateOrdersSearchResults.filter(x=>x!==r);
+  renderLateOrders(lateOrdersSearchResults!==null);
+  if(msg) msg.textContent='✓ تم حذف الطلب '+r.order_number+'.';
   scheduleLateOrdersRefresh(15000);
- }catch(e){
-  console.error('submitLateOrder',e);
-  const i=pendingLateOrders.indexOf(temp); if(i>-1) pendingLateOrders.splice(i,1);
-  lateOrdersCache=lateOrdersCache.filter(r=>r!==temp);
-  renderLateOrders();
-  if(msg) msg.textContent='لم يتم حفظ الطلب '+row.order_number+' ('+row.restaurant_name+'): '+(e.message||'تأكد من إعداد جدول late_orders وصلاحياته.')+' — أعد تسجيله.';
-  try{showToast('لم يتم حفظ الطلب '+row.order_number+' — أعد تسجيله')}catch(_){}
- }
+ }catch(e){console.error('lateDeleteOrder',e);if(msg) msg.textContent='تعذر حذف الطلب: '+(e.message||'');}
+}
+async function lateSaveEdit(r,vals){
+ const msg=document.getElementById('lateOrdersMessage');
+ try{
+  const db=await lateFindDbRow(r);
+  if(db){const {data,error}=await supabaseClient.from('late_orders').update(vals).eq('id',db.id).select('id'); if(error) throw error; if(!data||!data.length) throw new Error('ليس لديك صلاحية تعديل هذا الطلب.');}
+  lateSheetPost({action:'update',match:{order_number:r.order_number,created_at:r.created_at,employee_name:r.employee_name},...vals});
+  Object.assign(r,vals);
+  renderLateOrders(lateOrdersSearchResults!==null);
+  if(msg) msg.textContent='✓ تم تعديل الطلب '+r.order_number+'.';
+  scheduleLateOrdersRefresh(15000);
+  return true;
+ }catch(e){console.error('lateSaveEdit',e);if(msg) msg.textContent='تعذر تعديل الطلب: '+(e.message||'');return false;}
 }
 </script>
 <script>
 // Restore the user's records-list visibility preference after refresh.
 document.addEventListener('DOMContentLoaded', restoreLateOrdersVisibility);
 window.addEventListener('load', restoreLateOrdersVisibility);
+</script>
+<script>
+/* ===== تحسينات واجهة الطلبات المتأخرة: أزرار الأسباب، اقتراح المطاعم، تنبيه التكرار، التنقل بـ Enter، فلاتر، إحصائيات، تعديل/حذف ===== */
+(function(){
+ const $=id=>document.getElementById(id);
+ const st=document.createElement('style');
+ st.textContent=`
+ #lateReasonChips{display:flex;flex-wrap:wrap;gap:8px}
+ .lo-chip{padding:10px 16px;border-radius:999px;border:1px solid rgba(128,128,128,.45);background:transparent;color:inherit;font:inherit;font-size:14px;cursor:pointer}
+ .lo-chip.on{background:#2563eb;border-color:#2563eb;color:#fff;font-weight:700}
+ .lo-acts{display:inline-flex;gap:2px;margin-inline-start:6px}.lo-act{background:none;border:0;cursor:pointer;font-size:15px;padding:2px 4px}
+ .lo-stats{margin-top:12px;border:1px solid rgba(128,128,128,.35);border-radius:12px;padding:10px 14px}.lo-stats summary{cursor:pointer;font-weight:700}
+ .lo-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px;margin-top:12px}
+ .lo-kpi{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}.lo-kpi div{flex:1;min-width:110px;border:1px solid rgba(128,128,128,.35);border-radius:10px;padding:8px 12px;text-align:center}.lo-kpi b{display:block;font-size:22px}
+ .lo-bar{display:grid;grid-template-columns:minmax(80px,1.2fr) 2fr auto;gap:8px;align-items:center;margin:5px 0;font-size:13px}
+ .lo-bar>div{height:10px;border-radius:6px;background:rgba(128,128,128,.25);overflow:hidden}.lo-bar b{display:block;height:100%;background:#2563eb;border-radius:6px}
+ .lo-days{display:flex;align-items:flex-end;gap:4px;height:110px;margin-top:8px}.lo-days div{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;font-size:10px}.lo-days b{display:block;width:100%;background:#2563eb;border-radius:4px 4px 0 0;min-height:2px}
+ .lo-ov{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center;z-index:99998;padding:16px}.lo-ov.on{display:flex}
+ .lo-box{background:var(--surface,#fff);color:var(--ink,#111);border-radius:14px;padding:18px;width:min(440px,100%);display:grid;gap:10px}.lo-box h3{margin:0}.lo-box input,.lo-box select,.lo-box textarea{width:100%;padding:10px;border-radius:8px}`;
+ document.head.appendChild(st);
+
+ // 2) أسباب التأخير كأزرار
+ window.renderLateReasonChips=function(){
+  const sel=$('lateOrderReasonSelect'),box=$('lateReasonChips');if(!sel||!box)return;
+  const opts=[...sel.options].filter(o=>o.value);
+  box.innerHTML=opts.map(o=>`<button type="button" class="lo-chip" data-v="${esc(o.value)}">${o.value==='__other__'?'سبب آخر ✍️':esc(o.textContent)}</button>`).join('');
+  sel.style.display='none';sel.required=false;window.syncLateChips();
+ };
+ window.syncLateChips=function(){const sel=$('lateOrderReasonSelect');document.querySelectorAll('#lateReasonChips .lo-chip').forEach(c=>c.classList.toggle('on',!!sel&&c.dataset.v===sel.value));};
+ $('lateReasonChips')?.addEventListener('click',e=>{
+  const c=e.target.closest('.lo-chip');if(!c)return;
+  const sel=$('lateOrderReasonSelect');sel.value=c.dataset.v;sel.dispatchEvent(new Event('change'));
+  if(c.dataset.v==='__other__')$('lateOrderReason').focus();else $('lateOrderSubmitBtn').focus();
+ });
+
+ // 4) تنبيه التكرار أثناء الكتابة
+ window.lateUpdateDupHint=function(armed){
+  const n=($('lateOrderNumber').value||'').trim(),h=$('lateOrderDupHint'),btn=$('lateOrderSubmitBtn');
+  const hit=n?[...pendingLateOrders,...lateOrdersCache].find(r=>String(r.order_number||'').trim()===n):null;
+  if(hit){h.style.display='block';h.textContent='⚠️ هذا الرقم سُجّل سابقاً — '+(hit.restaurant_name||'')+' • '+(hit.created_at?new Date(hit.created_at).toLocaleString('ar-IQ'):'')+' • '+(hit.employee_name||'');}
+  else h.style.display='none';
+  if(!armed&&lateDupArmed&&lateDupArmed!==n)lateDupArmed='';
+  btn.textContent=(hit&&lateDupArmed===n)?'تسجيل مرة ثانية (تأكيد)':'تسجيل الطلب المتأخر';
+ };
+ $('lateOrderNumber')?.addEventListener('input',()=>window.lateUpdateDupHint());
+ (()=>{
+  const ys=$('lateOrderMonthY'),ms=$('lateOrderMonthM');if(!ys||!ms)return;
+  const cy=new Date().getFullYear();for(let y=cy;y>=cy-3;y--)ys.add(new Option(String(y),String(y)));
+  const go=()=>{
+   const m=+ms.value,y=+ys.value;if(!m){resetLateOrderSearch();return;}
+   const last=new Date(y,m,0).getDate(),pad=n=>String(n).padStart(2,'0');
+   $('lateOrderFromDate').value=y+'-'+pad(m)+'-01';$('lateOrderToDate').value=y+'-'+pad(m)+'-'+pad(last);$('lateOrderSearchDays').value='';
+   searchLateOrders();
+  };
+  ms.addEventListener('change',go);ys.addEventListener('change',()=>{if(ms.value)go();});
+ })();
+
+ // 3) التنقل بزر Enter
+ $('lateOrderNumber')?.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();$('lateRestaurantName').focus();}});
+ $('lateRestaurantName')?.addEventListener('keydown',e=>{if(e.key!=='Enter')return;e.preventDefault();
+  const v=$('lateOrderReasonSelect').value;
+  if(v&&v!=='__other__')$('lateOrderForm').requestSubmit();else{const c=document.querySelector('#lateReasonChips .lo-chip');(c||$('lateOrderReasonSelect')).focus();}});
+ $('lateOrderReason')?.addEventListener('keydown',e=>{if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){e.preventDefault();$('lateOrderForm').requestSubmit();}});
+
+ // 1) اقتراح أسماء المطاعم  + 8) فلاتر + 7) إحصائيات
+ const keyOf=a=>a.join('\u0001');
+ function fillRestaurants(){
+  const m=new Map();lateOrdersCache.forEach(r=>{const n=(r.restaurant_name||'').trim();if(n)m.set(n,(m.get(n)||0)+1);});
+  const names=[...m.entries()].sort((a,b)=>b[1]-a[1]).slice(0,300).map(x=>x[0]),dl=$('lateRestaurantList'),k=keyOf(names);
+  if(dl&&dl.dataset.k!==k){dl.dataset.k=k;dl.innerHTML=names.map(n=>`<option value="${esc(n)}"></option>`).join('');}
+ }
+ function fillFilters(){
+  const tb=$('lateOrdersSearchToolbar');if(!tb||!isAdmin())return;
+  if(!$('lateOrderFRest')){
+   const anchor=tb.querySelector('button');
+   [['lateOrderFRest','كل المطاعم'],['lateOrderFReason','كل الأسباب'],['lateOrderFEmp','كل الموظفين']].forEach(([id,label])=>{
+    const sel=document.createElement('select');sel.id=id;sel.dataset.label=label;sel.style.cssText='padding:8px;border-radius:8px;max-width:180px';
+    sel.addEventListener('change',()=>searchLateOrders());tb.insertBefore(sel,anchor);});
+  }
+  [['lateOrderFRest','restaurant_name'],['lateOrderFReason','delay_reason'],['lateOrderFEmp','employee_name']].forEach(([id,f])=>{
+   const sel=$(id),vals=[...new Set(lateOrdersCache.map(r=>(r[f]||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ar')),k=keyOf(vals);
+   if(sel.dataset.k===k)return;const prev=sel.value;sel.dataset.k=k;
+   sel.innerHTML=`<option value="">${sel.dataset.label}</option>`+vals.map(v=>`<option value="${esc(v)}">${esc(v)}</option>`).join('');sel.value=vals.includes(prev)?prev:'';
+  });
+ }
+ const canStats=()=>isAdmin()||(typeof isManagement==='function'&&isManagement());
+ function bars(list){const mx=list.length?list[0][1]:1;return list.length?list.map(x=>`<div class="lo-bar"><span>${esc(x[0])}</span><div><b style="width:${Math.round(x[1]/mx*100)}%"></b></div><em>${x[1]}</em></div>`).join(''):'<div class="muted">لا توجد بيانات</div>';}
+ function top(rows,f,n=6){const m=new Map();rows.forEach(r=>{const k=(r[f]||'—').trim()||'—';m.set(k,(m.get(k)||0)+1);});return [...m.entries()].sort((a,b)=>b[1]-a[1]).slice(0,n);}
+ function ensureStats(){
+  let d=$('lateStats');if(d)return d;
+  const wrap=document.querySelector('#lateOrdersCard .table-wrap');if(!wrap)return null;
+  d=document.createElement('details');d.id='lateStats';d.className='lo-stats';
+  d.innerHTML='<summary>📊 إحصائيات التأخيرات</summary><div style="margin-top:8px"><select id="lateStatsDays" style="padding:6px;border-radius:8px"><option value="1">اليوم</option><option value="7" selected>آخر 7 أيام</option><option value="30">آخر 30 يوم</option><option value="0">كل المحمّل</option></select></div><div id="lateStatsBody"></div>';
+  wrap.parentNode.insertBefore(d,wrap);
+  d.addEventListener('toggle',renderStats);$('lateStatsDays').addEventListener('change',renderStats);
+  return d;
+ }
+ function renderStats(){
+  const d=ensureStats();if(!d)return;d.style.display=canStats()?'':'none';
+  if(!canStats()||!d.open)return;
+  const days=+$('lateStatsDays').value;let rows=lateOrdersCache.filter(r=>!r._q&&r.created_at);
+  if(days){const c=new Date(baghdadDayStartUtc(baghdadDateOnly(new Date())));c.setUTCDate(c.getUTCDate()-days+1);rows=rows.filter(r=>new Date(r.created_at)>=c);}
+  const today=baghdadDateOnly(new Date()),cnt={};lateOrdersCache.forEach(r=>{if(r.created_at){const k=baghdadDateOnly(new Date(r.created_at));cnt[k]=(cnt[k]||0)+1;}});
+  const ds=[];for(let i=13;i>=0;i--)ds.push(baghdadDateOnly(new Date(Date.now()-i*864e5)));const mx=Math.max(1,...ds.map(k=>cnt[k]||0));
+  $('lateStatsBody').innerHTML=`<div class="lo-kpi"><div><b>${rows.length}</b>طلب متأخر</div><div><b>${cnt[today]||0}</b>اليوم</div><div><b>${new Set(rows.map(r=>r.restaurant_name)).size}</b>مطعم</div></div>
+  <div class="lo-grid"><div><h4>أكثر المطاعم تأخيراً</h4>${bars(top(rows,'restaurant_name'))}</div><div><h4>أكثر الأسباب</h4>${bars(top(rows,'delay_reason'))}</div><div><h4>حسب الموظف</h4>${bars(top(rows,'employee_name'))}</div>
+  <div><h4>آخر 14 يوم</h4><div class="lo-days">${ds.map(k=>`<div title="${k}: ${cnt[k]||0}"><span>${cnt[k]||0}</span><b style="height:${Math.round((cnt[k]||0)/mx*80)}%"></b><span>${k.slice(8)}</span></div>`).join('')}</div></div></div>`+(lateOrdersFull?'':'<p class="muted">مبنية على آخر السجلات المحمّلة. <button type="button" class="btn-dark" onclick="loadLateOrders(true,true)">تحميل كل السجلات</button></p>');
+ }
+ window.lateOrdersAfterRender=function(){try{fillRestaurants();fillFilters();renderStats();}catch(e){console.warn('late ui',e);}};
+
+ // 6) تعديل / حذف
+ const ov=document.createElement('div');ov.className='lo-ov';ov.id='loEdit';
+ ov.innerHTML='<div class="lo-box"><h3>تعديل الطلب</h3><input id="loeNum" maxlength="100" placeholder="رقم الطلب"><input id="loeRest" maxlength="200" placeholder="اسم المطعم" list="lateRestaurantList"><select id="loeReason"></select><textarea id="loeOther" maxlength="2000" placeholder="اكتب السبب" style="display:none"></textarea><div style="display:flex;gap:8px"><button type="button" class="btn-blue" id="loeSave">حفظ</button><button type="button" class="btn-dark" id="loeCancel">إلغاء</button></div></div>';
+ document.body.appendChild(ov);let cur=null;
+ const close=()=>{ov.classList.remove('on');cur=null;};
+ $('loeCancel').onclick=close;ov.addEventListener('click',e=>{if(e.target===ov)close();});
+ document.addEventListener('keydown',e=>{if(e.key==='Escape'&&ov.classList.contains('on'))close();});
+ $('loeReason').addEventListener('change',()=>{$('loeOther').style.display=$('loeReason').value==='__other__'?'block':'none';});
+ $('loeSave').onclick=async()=>{
+  if(!cur)return;const rv=$('loeReason').value,reason=rv==='__other__'?$('loeOther').value.trim():rv,num=$('loeNum').value.trim(),rest=$('loeRest').value.trim();
+  if(!num||!rest||!reason){alert('أكمل كل الحقول');return;}
+  const r=cur;$('loeSave').disabled=true;const ok=await lateSaveEdit(r,{order_number:num,restaurant_name:rest,delay_reason:reason});$('loeSave').disabled=false;if(ok)close();
+ };
+ $('lateOrdersBody')?.addEventListener('click',e=>{
+  const b=e.target.closest('.lo-act');if(!b)return;
+  const r=lateOrdersCache.find(x=>String(x._k)===b.dataset.k);if(!r)return;
+  if(b.dataset.act==='del'){if(confirm('حذف الطلب رقم '+r.order_number+'؟'))lateDeleteOrder(r);return;}
+  cur=r;$('loeNum').value=r.order_number;$('loeRest').value=r.restaurant_name;
+  const reasons=lateOrderReasonsCache.map(x=>x.reason),inList=reasons.includes(r.delay_reason);
+  $('loeReason').innerHTML=reasons.map(x=>`<option value="${esc(x)}">${esc(x)}</option>`).join('')+'<option value="__other__">سبب آخر</option>';
+  $('loeReason').value=inList?r.delay_reason:'__other__';$('loeOther').value=inList?'':r.delay_reason;$('loeOther').style.display=inList?'none':'block';
+  ov.classList.add('on');$('loeNum').focus();
+ });
+ setTimeout(()=>{try{window.renderLateReasonChips();}catch(_){}} ,0);
+})();
 </script>
 
 <button type="button" id="uTop" aria-label="للأعلى">↑</button>
@@ -7809,7 +8051,7 @@ setInterval(()=>safe(()=>{const hs=$$('.card h2').filter(h=>h.offsetParent),k=hs
 })();
 </script>
 <script>
-(function(){var v='v3.2-fast-late-orders';console.log('%c[نظام الحضور] النسخة المعدلة '+v,'color:#0a0;font-weight:bold');
+(function(){var v='v3.3-late-orders-pro';console.log('%c[نظام الحضور] النسخة المعدلة '+v,'color:#0a0;font-weight:bold');
 document.addEventListener('DOMContentLoaded',function(){var b=document.createElement('div');b.textContent='نسخة '+v;
 b.style.cssText='position:fixed;bottom:6px;left:6px;z-index:99999;background:#0a7;color:#fff;font:11px sans-serif;padding:3px 8px;border-radius:8px;opacity:.85;pointer-events:none';document.body.appendChild(b);});})();
 </script>
