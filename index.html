@@ -7389,7 +7389,7 @@ async function clearLateOrdersSystemOnly(){
 function subscribeLateOrdersRealtime(){
  if(lateOrdersRealtimeChannel){supabaseClient.removeChannel(lateOrdersRealtimeChannel);}
  lateOrdersRealtimeChannel=supabaseClient.channel('late-orders-live-'+(currentUser?.id||'user'))
-  .on('postgres_changes',{event:'*',schema:'public',table:'late_orders'},()=>loadLateOrders())
+  .on('postgres_changes',{event:'*',schema:'public',table:'late_orders'},()=>scheduleLateOrdersRefresh())
   .on('postgres_changes',{event:'*',schema:'public',table:'late_order_reasons'},()=>loadLateOrderReasons())
   .subscribe();
 }
@@ -7452,13 +7452,13 @@ function renderLateOrders(useSearchResults=false){
  if(msg) msg.textContent=`السجلات المعروضة: ${filtered.length} من أصل ${lateOrdersCache.length}.`;
 }
 
-function fetchLateOrdersJsonp(url){
+function fetchLateOrdersJsonp(url,timeoutMs=15000){
  return new Promise((resolve,reject)=>{
   const callbackName='__lateOrdersJsonp_'+Date.now()+'_'+Math.random().toString(36).slice(2);
   const script=document.createElement('script');
   let settled=false;
   const cleanup=()=>{try{delete window[callbackName];}catch(_){window[callbackName]=undefined;} if(script.parentNode)script.parentNode.removeChild(script);};
-  const timeout=setTimeout(()=>{if(settled)return;settled=true;cleanup();reject(new Error('انتهت مهلة الاتصال بـ Google Sheets.'));},15000);
+  const timeout=setTimeout(()=>{if(settled)return;settled=true;cleanup();reject(new Error('انتهت مهلة الاتصال بـ Google Sheets.'));},timeoutMs);
   window[callbackName]=(data)=>{if(settled)return;settled=true;clearTimeout(timeout);cleanup();resolve(data);};
   script.onerror=()=>{if(settled)return;settled=true;clearTimeout(timeout);cleanup();reject(new Error('تعذر تحميل رد Google Sheets. تحقق من رابط النشر وصلاحياته.'));};
   script.src=url+(url.includes('?')?'&':'?')+'callback='+encodeURIComponent(callbackName)+'&t='+Date.now();
@@ -7466,54 +7466,112 @@ function fetchLateOrdersJsonp(url){
  });
 }
 
-async function loadLateOrders(){
+let lateOrdersLoadSeq=0, lateOrdersRefreshTimer=null;
+const pendingLateOrders=[];
+function scheduleLateOrdersRefresh(ms=8000){
+ clearTimeout(lateOrdersRefreshTimer);
+ lateOrdersRefreshTimer=setTimeout(()=>loadLateOrders(true),ms);
+}
+// يبقي الطلبات التي ما زال حفظها جارياً ظاهرة في الجدول حتى تظهر في المصدر
+function mergePendingLateOrders(){
+ const now=Date.now();
+ for(let i=pendingLateOrders.length-1;i>=0;i--){
+  const p=pendingLateOrders[i];
+  const found=lateOrdersCache.some(r=>r.order_number===p.order_number&&r.restaurant_name===p.restaurant_name&&r.delay_reason===p.delay_reason);
+  if(found||now-new Date(p.created_at).getTime()>120000) pendingLateOrders.splice(i,1);
+  else lateOrdersCache.unshift(p);
+ }
+ lateOrdersCache.sort((a,b)=>new Date(b.created_at||0)-new Date(a.created_at||0));
+}
+
+const LATE_ORDERS_CACHE_KEY='late_orders_sheet_cache_v1';
+let lateOrdersSheetsInflight=null, lateOrdersRetryTimer=null, lateOrdersRetryCount=0;
+
+// طلب واحد فقط إلى Google Sheets في نفس الوقت (حتى لا تتراكم الطلبات على Apps Script) + إعادة محاولة واحدة
+function fetchLateOrdersFromSheets(){
+ if(lateOrdersSheetsInflight) return lateOrdersSheetsInflight;
+ lateOrdersSheetsInflight=(async()=>{
+  try{
+   try{return await fetchLateOrdersJsonp(LATE_ORDERS_SHEETS_WEBHOOK,25000);}
+   catch(_){return await fetchLateOrdersJsonp(LATE_ORDERS_SHEETS_WEBHOOK,25000);}
+  }finally{lateOrdersSheetsInflight=null;}
+ })();
+ return lateOrdersSheetsInflight;
+}
+function mapLateSheetRows(rows){
+ return rows.map((r,i)=>({
+  id:r.id??i,
+  order_number:String(r.order_number??r['رقم الطلب']??''),
+  restaurant_name:String(r.restaurant_name??r['اسم المطعم']??''),
+  delay_reason:String(r.delay_reason??r['سبب التأخير']??''),
+  employee_name:String(r.employee_name??r['اسم الموظف']??''),
+  created_at:r.created_at??r['وقت التسجيل']??null
+ }));
+}
+async function fetchLateOrdersDb(){
+ const {data,error}=await supabaseClient.from('late_orders')
+  .select('id,order_number,restaurant_name,delay_reason,employee_name,created_at')
+  .order('created_at',{ascending:false});
+ if(error) throw error;
+ return (data||[]).map(r=>({id:r.id,order_number:String(r.order_number||''),restaurant_name:String(r.restaurant_name||''),delay_reason:String(r.delay_reason||''),employee_name:String(r.employee_name||''),created_at:r.created_at||null}));
+}
+function applyLateOrdersRows(rows){
+ lateOrdersSearchResults=null;
+ lateOrdersCache=rows.slice().sort((a,b)=>new Date(b.created_at||0)-new Date(a.created_at||0));
+ mergePendingLateOrders();
+ renderLateOrders();
+}
+
+async function loadLateOrders(silent=false){
  updateLateOrdersAdminControls();
  const body=document.getElementById('lateOrdersBody');
  const msg=document.getElementById('lateOrdersMessage');
  if(!body) return;
- body.innerHTML='<tr><td colspan="5">جارٍ تحميل سجل الطلبات من Google Sheets...</td></tr>';
+ const mySeq=++lateOrdersLoadSeq;
+ let shown=lateOrdersCache.length>0, sheetsLoaded=false;
+ // 1) اعرض آخر نسخة محفوظة من الشيت فوراً (إن وُجدت)
+ if(!shown){
+  try{const c=JSON.parse(localStorage.getItem(LATE_ORDERS_CACHE_KEY)||'null');
+   if(c&&Array.isArray(c.rows)&&c.rows.length){applyLateOrdersRows(c.rows);shown=true;if(msg)msg.textContent+=' — آخر نسخة محفوظة، جارٍ المزامنة مع Google Sheets...';}
+  }catch(_){}
+ }
+ if(!shown) body.innerHTML='<tr><td colspan="5">جارٍ تحميل سجل الطلبات...</td></tr>';
+ // 2) بالتوازي: اعرض سجلات النظام مؤقتاً حتى يصل رد الشيت
+ let dbDone=Promise.resolve();
+ if(!shown){
+  dbDone=fetchLateOrdersDb().then(rows=>{
+   if(mySeq===lateOrdersLoadSeq&&!sheetsLoaded){applyLateOrdersRows(rows);shown=true;if(msg)msg.textContent+=' — عرض مؤقت من النظام، جارٍ المزامنة مع Google Sheets...';}
+  }).catch(()=>{});
+ }
+ // 3) الشيت هو المصدر الأساسي
  try{
   if(!LATE_ORDERS_SHEETS_WEBHOOK) throw new Error('رابط Google Sheets غير مضبوط.');
-  // Apps Script لا يسمح دائماً بقراءة JSON عبر fetch من نطاق الموقع بسبب CORS؛ JSONP يتجاوز مشكلة القراءة.
-  const result=await fetchLateOrdersJsonp(LATE_ORDERS_SHEETS_WEBHOOK);
+  const result=await fetchLateOrdersFromSheets();
+  if(mySeq!==lateOrdersLoadSeq) return;
   if(!result || result.ok!==true || !Array.isArray(result.rows)){
    throw new Error('واجهة Google Sheets لا تُرجع السجلات بعد. حدّث doGet في Apps Script ليُرجع rows ثم أعد نشر التطبيق.');
   }
-  lateOrdersSearchResults=null;
-  lateOrdersCache=result.rows.map((r,i)=>({
-   id:r.id??i,
-   order_number:String(r.order_number??r['رقم الطلب']??''),
-   restaurant_name:String(r.restaurant_name??r['اسم المطعم']??''),
-   delay_reason:String(r.delay_reason??r['سبب التأخير']??''),
-   employee_name:String(r.employee_name??r['اسم الموظف']??''),
-   created_at:r.created_at??r['وقت التسجيل']??null
-  })).sort((a,b)=>new Date(b.created_at||0)-new Date(a.created_at||0));
-  renderLateOrders();
+  sheetsLoaded=true;
+  const rows=mapLateSheetRows(result.rows);
+  applyLateOrdersRows(rows);
+  try{localStorage.setItem(LATE_ORDERS_CACHE_KEY,JSON.stringify({t:Date.now(),rows:rows.slice(0,3000)}));}catch(_){}
+  lateOrdersRetryCount=0;
   if(msg) msg.textContent += ' — مصدر السجل: Google Sheets';
  }catch(e){
   console.error('loadLateOrders from Google Sheets',e);
-  // احتياطياً: إذا تعطل رابط Google Sheets، اعرض سجلات Supabase بدلاً من ترك الجدول فارغاً.
-  try{
-   const {data,error}=await supabaseClient.from('late_orders')
-    .select('id,order_number,restaurant_name,delay_reason,employee_name,created_at')
-    .order('created_at',{ascending:false});
-   if(error) throw error;
-   lateOrdersSearchResults=null;
-   lateOrdersCache=(data||[]).map(r=>({
-    id:r.id,
-    order_number:String(r.order_number||''),
-    restaurant_name:String(r.restaurant_name||''),
-    delay_reason:String(r.delay_reason||''),
-    employee_name:String(r.employee_name||''),
-    created_at:r.created_at||null
-   }));
-   renderLateOrders();
-   if(msg)msg.textContent='تعذر الاتصال بـ Google Sheets؛ يتم عرض سجلات النظام الاحتياطية. '+(e.message||'');
-  }catch(dbError){
-   console.error('loadLateOrders fallback',dbError);
-   body.innerHTML='<tr><td colspan="5">تعذر تحميل السجلات من Google Sheets ومن قاعدة بيانات النظام.</td></tr>';
-   if(msg)msg.textContent='فشل تحميل السجل من المصدرين. تحقق من نشر Apps Script وصلاحيات جدول late_orders.';
+  if(mySeq!==lateOrdersLoadSeq) return;
+  await dbDone;
+  if(!shown){
+   try{applyLateOrdersRows(await fetchLateOrdersDb());shown=true;}
+   catch(dbError){
+    console.error('loadLateOrders fallback',dbError);
+    body.innerHTML='<tr><td colspan="5">تعذر تحميل السجلات من Google Sheets ومن قاعدة بيانات النظام.</td></tr>';
+    if(msg)msg.textContent='فشل تحميل السجل من المصدرين. تحقق من نشر Apps Script وصلاحيات جدول late_orders.';
+    return;
+   }
   }
+  if(msg)msg.textContent+=' — Google Sheets بطيء حالياً ('+(e.message||'')+')؛ المعروض آخر نسخة متاحة وقد لا تشمل أحدث السجلات.'+(lateOrdersRetryCount<3?' ستتم إعادة المحاولة تلقائياً.':' اضغط "تحديث السجل" للمحاولة مرة ثانية.');
+  if(lateOrdersRetryCount<3){lateOrdersRetryCount++;clearTimeout(lateOrdersRetryTimer);lateOrdersRetryTimer=setTimeout(()=>loadLateOrders(true),45000);}
  }
 }
 
@@ -7542,43 +7600,60 @@ function downloadLateOrders(){
  document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);
 }
 
-async function submitLateOrder(event){
+function submitLateOrder(event){
  event.preventDefault();
- const btn=document.getElementById('lateOrderSubmitBtn');const msg=document.getElementById('lateOrdersMessage');
- const orderNumber=document.getElementById('lateOrderNumber').value.trim();
+ const msg=document.getElementById('lateOrdersMessage');
+ const numEl=document.getElementById('lateOrderNumber');
+ const orderNumber=numEl.value.trim();
  const restaurantName=document.getElementById('lateRestaurantName').value.trim();
  const selectedReason=document.getElementById('lateOrderReasonSelect').value;
  const otherReason=document.getElementById('lateOrderReason').value.trim();
  const delayReason=selectedReason==='__other__'?otherReason:selectedReason;
  if(!orderNumber||!restaurantName||!delayReason){msg.textContent='يرجى إدخال رقم الطلب واسم المطعم واختيار السبب أو كتابة السبب الآخر.';return;}
  if(!currentUser||!currentProfile){msg.textContent='يجب تسجيل الدخول أولاً.';return;}
- btn.disabled=true;msg.textContent='جارٍ حفظ الطلب...';
+ // فحص التكرار من الذاكرة المحلية (فوري، بدون اتصال بالإنترنت)
+ const isDup=lateOrdersCache.some(r=>String(r.order_number||'').trim()===orderNumber);
+ if(isDup&&!confirm('يوجد سجل سابق بنفس رقم الطلب. هل تريد تسجيله مرة ثانية؟')){msg.textContent='تم إلغاء التسجيل لتجنب التكرار.';return;}
+ const row={order_number:orderNumber,restaurant_name:restaurantName,delay_reason:delayReason,employee_id:currentProfile.employee_id||null,employee_name:currentProfile.full_name||currentProfile.username||'موظف',created_by:currentUser.id};
+ // عرض الطلب فوراً في الجدول
+ const temp={id:'tmp_'+Date.now()+'_'+Math.random().toString(36).slice(2),order_number:orderNumber,restaurant_name:restaurantName,delay_reason:delayReason,employee_name:row.employee_name,created_at:new Date().toISOString()};
+ pendingLateOrders.push(temp);
+ lateOrdersCache=[temp,...lateOrdersCache];
+ // تفريغ الحقول فوراً ليستطيع المستخدم كتابة الطلب التالي
+ document.getElementById('lateOrderForm').reset();handleLateReasonChange();
+ renderLateOrders();
+ msg.textContent='جارٍ حفظ الطلب '+orderNumber+' بالخلفية... تقدر تكتب الطلب التالي.';
+ numEl.focus();
+ saveLateOrderInBackground(row,temp);
+}
+
+async function saveLateOrderInBackground(row,temp){
+ const msg=document.getElementById('lateOrdersMessage');
  try{
-  const duplicate=await supabaseClient.from('late_orders').select('id').eq('order_number',orderNumber).limit(1);
-  if(duplicate.error) throw duplicate.error;
-  if(duplicate.data?.length&&!confirm('يوجد سجل سابق بنفس رقم الطلب. هل تريد تسجيله مرة ثانية؟')){msg.textContent='تم إلغاء التسجيل لتجنب التكرار.';return;}
-  const row={order_number:orderNumber,restaurant_name:restaurantName,delay_reason:delayReason,employee_id:currentProfile.employee_id||null,employee_name:currentProfile.full_name||currentProfile.username||'موظف',created_by:currentUser.id};
   const {data,error}=await supabaseClient.from('late_orders').insert(row).select('id,order_number,restaurant_name,delay_reason,employee_name,created_at').single();
   if(error) throw error;
-  let sheetNotice='';
+  temp.created_at=data.created_at;
   if(LATE_ORDERS_SHEETS_WEBHOOK){
-   try{
-    // Apps Script يستقبل JSON كنص عادي لتفادي طلبات preflight في المتصفح.
-    await fetch(LATE_ORDERS_SHEETS_WEBHOOK,{
-     method:'POST',mode:'no-cors',redirect:'follow',
-     headers:{'Content-Type':'text/plain;charset=utf-8'},
-     body:JSON.stringify({...row,created_at:data.created_at})
-    });
-    sheetNotice=' تم إرسال بيانات الطلب إلى Google Sheets. إذا لم تظهر بالشيت، حدّث نشر Apps Script بالكود المرفق.';
-   }catch(sheetError){
-    console.warn('Google Sheets sync failed',sheetError);
-    sheetNotice=' حُفظ الطلب في النظام، لكن تعذر إرسال نسخة إلى Google Sheets.';
-   }
+   // يُرسل للشيت بدون انتظار الرد (Apps Script بطيء)
+   fetch(LATE_ORDERS_SHEETS_WEBHOOK,{
+    method:'POST',mode:'no-cors',redirect:'follow',
+    headers:{'Content-Type':'text/plain;charset=utf-8'},
+    body:JSON.stringify({...row,created_at:data.created_at})
+   }).catch(err=>{
+    console.warn('Google Sheets sync failed',err);
+    if(msg) msg.textContent='حُفظ الطلب '+row.order_number+' في النظام، لكن تعذر إرسال نسخة إلى Google Sheets.';
+   });
   }
-  else sheetNotice=' السجل يتحدث مباشرة داخل النظام؛ ربط Google Sheets يحتاج إعداد رابط المزامنة.';
-  document.getElementById('lateOrderForm').reset();handleLateReasonChange();msg.textContent='تم تسجيل الطلب المتأخر بنجاح.'+sheetNotice;await loadLateOrders();
- }catch(e){console.error('submitLateOrder',e);msg.textContent='لم يتم حفظ الطلب: '+(e.message||'تأكد من إعداد جدول late_orders وصلاحياته.');}
- finally{btn.disabled=false;}
+  if(msg) msg.textContent='✓ تم حفظ الطلب '+row.order_number+'.';
+  scheduleLateOrdersRefresh(15000);
+ }catch(e){
+  console.error('submitLateOrder',e);
+  const i=pendingLateOrders.indexOf(temp); if(i>-1) pendingLateOrders.splice(i,1);
+  lateOrdersCache=lateOrdersCache.filter(r=>r!==temp);
+  renderLateOrders();
+  if(msg) msg.textContent='لم يتم حفظ الطلب '+row.order_number+' ('+row.restaurant_name+'): '+(e.message||'تأكد من إعداد جدول late_orders وصلاحياته.')+' — أعد تسجيله.';
+  try{showToast('لم يتم حفظ الطلب '+row.order_number+' — أعد تسجيله')}catch(_){}
+ }
 }
 </script>
 <script>
@@ -7734,7 +7809,7 @@ setInterval(()=>safe(()=>{const hs=$$('.card h2').filter(h=>h.offsetParent),k=hs
 })();
 </script>
 <script>
-(function(){var v='v3-2026-10-16';console.log('%c[نظام الحضور] النسخة المعدلة '+v,'color:#0a0;font-weight:bold');
+(function(){var v='v3.2-fast-late-orders';console.log('%c[نظام الحضور] النسخة المعدلة '+v,'color:#0a0;font-weight:bold');
 document.addEventListener('DOMContentLoaded',function(){var b=document.createElement('div');b.textContent='نسخة '+v;
 b.style.cssText='position:fixed;bottom:6px;left:6px;z-index:99999;background:#0a7;color:#fff;font:11px sans-serif;padding:3px 8px;border-radius:8px;opacity:.85;pointer-events:none';document.body.appendChild(b);});})();
 </script>
