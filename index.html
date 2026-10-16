@@ -3167,13 +3167,11 @@ async function loadTodayAttendance(){
 
 
 function getAttendance(employeeId){
-
- return attendanceList.find(
-  a =>
-   Number(a.employee_id) ===
-   Number(employeeId)
- );
-
+ // بعد منتصف الليل قد يوجد سجل الأمس وسجل اليوم لنفس الموظف: نفضّل السجل الحاضر ثم الأحدث.
+ const rows=attendanceList.filter(a=>Number(a.employee_id)===Number(employeeId));
+ if(rows.length<=1) return rows[0];
+ return rows.find(a=>a.present===true) ||
+  rows.slice().sort((a,b)=>String(b.attendance_date||'').localeCompare(String(a.attendance_date||'')) || (Number(b.id)||0)-(Number(a.id)||0))[0];
 }
 
 
@@ -3296,17 +3294,99 @@ function getActiveWorkSession(employeeId){
  return workSessionsList.find(s=>Number(s.employee_id)===Number(employeeId)&&!s.end_time);
 }
 
+/* ===== محرك حساب وقت العمل الفعلي (مصدر واحد للوحة التحكم والجدول والتقارير) =====
+   - يحسب بالمللي ثانية ولا يقرّب كل جلسة لوحدها (كان القرّاء يخسرون حتى 59 ثانية لكل جلسة).
+   - يطرح أي وقت استراحة يتقاطع مع جلسة العمل حتى لو بقيت الجلسة مفتوحة بالخطأ.
+   - يوقف الجلسة المفتوحة عند وقت الانصراف إذا الموظف منصرف.
+   - يدمج الجلسات المتداخلة حتى لا يُحسب نفس الوقت مرتين.
+   - (للعرض الحي فقط) إذا الموظف حاضر وليس في استراحة وما عنده جلسة مفتوحة، يكمّل العدّاد من آخر نقطة معروفة. */
+function _wsTs(v){ if(!v) return null; const n=Date.parse(v); return Number.isFinite(n)?n:null; }
+function _wsMerge(list){
+ const a=list.filter(x=>x&&x[1]>x[0]).sort((p,q)=>p[0]-q[0]);
+ const out=[];
+ for(const iv of a){
+  const last=out[out.length-1];
+  if(last && iv[0]<=last[1]) last[1]=Math.max(last[1],iv[1]);
+  else out.push([iv[0],iv[1]]);
+ }
+ return out;
+}
+function _wsSubtract(base,cuts){
+ const out=[];
+ for(const b of base){
+  let cur=b[0];
+  for(const c of cuts){
+   if(c[1]<=cur || c[0]>=b[1]) continue;
+   if(c[0]>cur) out.push([cur,c[0]]);
+   cur=Math.max(cur,c[1]);
+   if(cur>=b[1]) break;
+  }
+  if(cur<b[1]) out.push([cur,b[1]]);
+ }
+ return out;
+}
+function computeWorkMs(o){
+ const now=o.now ?? Date.now();
+ const rs=o.rangeStart ?? -Infinity, re=o.rangeEnd ?? Infinity;
+ const sessions=o.sessions||[], breaks=o.breaks||[], att=o.attendanceRows||[];
+
+ const closes=att.filter(a=>a.present!==true && a.check_out).map(a=>_wsTs(a.check_out)).filter(x=>x!==null).sort((x,y)=>x-y);
+
+ const iv=[]; let lastSessionEnd=0, hasOpen=false;
+ for(const s of sessions){
+  const st=_wsTs(s.start_time); if(st===null) continue;
+  let en=_wsTs(s.end_time);
+  if(en===null){
+   hasOpen=true;
+   en=now;
+   const c=closes.find(x=>x>=st);
+   if(c!==undefined && c<en) en=c;
+  }
+  en=Math.min(en,now);
+  if(en>st){ iv.push([st,en]); lastSessionEnd=Math.max(lastSessionEnd,en); }
+ }
+
+ const cutsRaw=[]; let lastBreakEnd=0;
+ for(const b of breaks){
+  const bs=_wsTs(b.start_time); if(bs===null) continue;
+  const be=_wsTs(b.end_time);
+  const e=Math.min(be===null?now:be,now);
+  if(e>bs) cutsRaw.push([bs,e]);
+  if(be!==null) lastBreakEnd=Math.max(lastBreakEnd,be);
+ }
+
+ if(o.heal && o.present && !o.onBreak && !hasOpen){
+  const ci=att.filter(a=>a.present===true && a.check_in).map(a=>_wsTs(a.check_in)).filter(x=>x!==null).sort((x,y)=>y-x)[0]||0;
+  const from=Math.max(lastSessionEnd,lastBreakEnd,ci);
+  if(from>0 && from<now) iv.push([from,now]);
+ }
+
+ const parts=_wsSubtract(_wsMerge(iv),_wsMerge(cutsRaw));
+ let total=0;
+ for(const p of parts){
+  const a=Math.max(p[0],rs), b=Math.min(p[1],re);
+  if(b>a) total+=b-a;
+ }
+ return total;
+}
+
 function workSessionMinutes(session,at=new Date()){
- if(!session?.start_time) return 0;
- return session.end_time
-  ? Number(session.duration_minutes||minutesBetween(session.start_time,session.end_time))
-  : minutesBetween(session.start_time,at);
+ const st=_wsTs(session?.start_time); if(st===null) return 0;
+ const en=session.end_time?_wsTs(session.end_time):new Date(at).getTime();
+ return en>st?(en-st)/60000:0;
 }
 
 function getTodayActualWorkMinutes(employeeId){
- return workSessionsList
-  .filter(s=>Number(s.employee_id)===Number(employeeId))
-  .reduce((sum,s)=>sum+workSessionMinutes(s),0);
+ const id=Number(employeeId);
+ const att=attendanceList.filter(a=>Number(a.employee_id)===id);
+ return computeWorkMs({
+  sessions:workSessionsList.filter(s=>Number(s.employee_id)===id),
+  breaks:breaksList.filter(b=>Number(b.employee_id)===id),
+  attendanceRows:att,
+  heal:true,
+  present:att.some(a=>a.present===true),
+  onBreak:!!getActiveBreak(id)
+ })/60000;
 }
 
 function patchWorkSession(row){
@@ -3403,16 +3483,18 @@ async function employeeCheckOutSecure(){
   return {error};
  }
  const employeeId=Number(currentProfile?.employee_id);
- const {data:attendance,error:attendanceError}=await supabaseClient
+ const {data:attendanceRows,error:attendanceError}=await supabaseClient
   .from('attendance')
   .select('*')
   .eq('employee_id',employeeId)
-  .eq('attendance_date',today())
-  .maybeSingle();
+  .order('attendance_date',{ascending:false})
+  .order('id',{ascending:false})
+  .limit(1);
  if(attendanceError){
   console.error('EMPLOYEE CHECK-OUT READ ATTENDANCE ERROR',attendanceError);
   return {error:attendanceError};
  }
+ const attendance=Array.isArray(attendanceRows)?attendanceRows[0]:attendanceRows;
  if(attendance) patchAttendance(attendance);
  const {data:sessions,error:sessionsError}=await supabaseClient
   .from('work_sessions')
@@ -3426,6 +3508,7 @@ async function employeeCheckOutSecure(){
  }
  const ws=sessions?.[0]||null;
  if(ws) patchWorkSession(ws);
+ await loadTodayWorkSessions();
  return {data:{...data,attendance,work_session:ws}};
 }
 
@@ -3537,7 +3620,7 @@ async function checkOut(employeeId){
    const {data,error}=await employeeCheckOutSecure();
    if(error){ showToast(error.message||'تعذر تسجيل الخروج'); return; }
    renderTable(); updateStats();
-   const duration=getTodayActualWorkMinutes(employeeId);
+   const duration=Math.round(getTodayActualWorkMinutes(employeeId));
    writeActivity(employeeId,employee.name,'تسجيل خروج',duration+' دقيقة','تم إيقاف وقت العمل الفعلي وإغلاق اليوم').catch(()=>{});
    showToast('تم تسجيل الخروج وإيقاف وقت العمل الفعلي');
    return;
@@ -3587,7 +3670,7 @@ async function checkOut(employeeId){
   }
 
   patchAttendance(updatedAttendance||{...attendance,present:false,check_out:now});
-  const duration=getTodayActualWorkMinutes(employeeId);
+  const duration=Math.round(getTodayActualWorkMinutes(employeeId));
   renderTable(); updateStats();
   writeActivity(employeeId,employee.name,'تسجيل خروج',duration+' دقيقة','تم إيقاف وقت العمل الفعلي وإغلاق اليوم').catch(()=>{});
   showToast('تم تسجيل الخروج وإيقاف وقت العمل الفعلي');
@@ -3750,6 +3833,7 @@ async function startBreak(
    const row=data?.break || (Array.isArray(data) ? data[0] : null) || (data?.id != null ? data : null);
    if(data?.work_session) patchWorkSession(data.work_session);
    if(row) patchBreak(row);
+   await loadTodayWorkSessions();   // RPC تغلق جلسة العمل بالسيرفر؛ نحدّث النسخة المحلية فوراً
    renderTable(); updateStats();
 
    if(realtimeChannel && row){
@@ -3982,6 +4066,7 @@ async function finishBreak(breakId){
    };
   }
   patchBreak(row);
+  await loadTodayWorkSessions();   // الجلسة الجديدة بعد الاستراحة تُفتح بالسيرفر؛ بدونها يتوقف العدّاد محلياً
   renderTable(); updateStats();
   if(realtimeChannel && row){
    realtimeChannel.send({
@@ -4081,6 +4166,7 @@ async function finishBreak(breakId){
   }
  }
 
+ renderTable(); updateStats();   // بعد فتح جلسة العمل الجديدة
  writeActivity(active.employee_id,employee?.name||'','إنهاء استراحة',actual+' دقيقة',overage>0?`تجاوز ${overage} دقيقة`:'ضمن الوقت المحدد').catch(()=>{});
 
  showToast(
@@ -4851,12 +4937,14 @@ function updateCustomDashboard(){
   return sum+breaksList
    .filter(b=>Number(b.employee_id)===Number(e.id))
    .reduce((s,b)=>{
-    const end=b.end_time?new Date(b.end_time):new Date();
-    return s+minutesBetween(b.start_time,end);
+    const st=Date.parse(b.start_time);
+    const en=b.end_time?Date.parse(b.end_time):Date.now();
+    return s+(Number.isFinite(st)&&Number.isFinite(en)&&en>st?(en-st)/60000:0);
    },0);
  },0);
 
- const breakCount=breaksList.length;
+ const empIdSet=new Set(employeesList.map(e=>Number(e.id)));
+ const breakCount=breaksList.filter(b=>empIdSet.has(Number(b.employee_id))).length;
  const avgWork=total?Math.round(totalWork/total):0;
  const avgBreak=breakCount?Math.round(totalBreak/breakCount):0;
 
@@ -5712,17 +5800,21 @@ async function updatePermissionRequest(id,status){
 }
 
 let realtimeChannel = null;
-let realtimeRefreshTimer = null;
+const realtimeRefreshTimers = new Map();
 
 function scheduleRealtimeRefresh(task,delay=15){
- clearTimeout(realtimeRefreshTimer);
- realtimeRefreshTimer = setTimeout(async()=>{
+ // مؤقت مستقل لكل مهمة: سابقاً كان مؤقت واحد مشترك، فأي حدث جديد (مثلاً work_sessions)
+ // يلغي تحديث الاستراحات/الحضور المعلّق ويبقي الأرقام قديمة.
+ const key=String(task);
+ clearTimeout(realtimeRefreshTimers.get(key));
+ realtimeRefreshTimers.set(key,setTimeout(async()=>{
+  realtimeRefreshTimers.delete(key);
   try{
    await task();
   }catch(e){
    console.error('Realtime refresh error',e);
   }
- },Math.max(0,delay));
+ },Math.max(0,delay)));
 }
 
 function applyRealtimeBreakChange(payload){
@@ -5772,7 +5864,7 @@ function subscribeRealtime(){
      },
      ()=>{
       scheduleRealtimeRefresh(async()=>{
-       await loadTodayAttendance();
+       await Promise.all([loadTodayAttendance(),loadTodayWorkSessions()]);
        renderTable();
        updateStats();
 
@@ -5796,7 +5888,7 @@ function subscribeRealtime(){
 
       // مزامنة خفيفة بالخلفية للتأكد من تطابق البيانات مع قاعدة البيانات.
       scheduleRealtimeRefresh(async()=>{
-       await loadTodayBreaks();
+       await Promise.all([loadTodayBreaks(),loadTodayWorkSessions()]);
        renderTable();
        updateStats();
 
@@ -5818,6 +5910,7 @@ function subscribeRealtime(){
       scheduleRealtimeRefresh(async()=>{
        await loadTodayWorkSessions();
        renderTable();
+       updateStats();
        if(isManagement()) generateWeeklyReport().catch(()=>{});
       });
      }
@@ -5982,19 +6075,14 @@ function effectiveOverageMinutes(breakRows,cancelledIds){
  },0);
 }
 
-function sumWorkSessions(sessions,from,to){
+function sumWorkSessions(sessions,from,to,breaks,attendanceRows){
  const {start,end}=baghdadRangeUtc(from,to);
- const rangeStart=Date.parse(start),rangeEnd=Date.parse(end),now=Date.now();
- return (sessions||[]).reduce((sum,s)=>{
-  const sessionStart=Date.parse(s.start_time);
-  if(!Number.isFinite(sessionStart)) return sum;
-  const startAt=Math.max(sessionStart,rangeStart);
-  const rawEnd=s.end_time?Date.parse(s.end_time):now;
-  if(!Number.isFinite(rawEnd)) return sum;
-  const endAt=Math.min(rawEnd,rangeEnd,now);
-  if(endAt<=startAt) return sum;
-  return sum+Math.floor((endAt-startAt)/60000);
- },0);
+ const ms=computeWorkMs({
+  sessions,breaks,attendanceRows,
+  rangeStart:Date.parse(start),rangeEnd:Date.parse(end),
+  now:Date.now(),heal:false
+ });
+ return Math.floor(ms/60000);
 }
 
 
@@ -6338,13 +6426,13 @@ async function generateWeeklyReport(){
    const prevWorkSessions=previous.workSessions.filter(w=>Number(w.employee_id)===Number(employee.id));
 
    const presentDays=empAttendance.filter(a=>a.check_in).length;
-   const workMinutes=sumWorkSessions(empWorkSessions,from,to);
+   const workMinutes=sumWorkSessions(empWorkSessions,from,to,empBreaks,empAttendance);
    const breakMinutes=empBreaks.reduce((sum,b)=>sum+Number(b.actual_minutes||0),0);
    const breakCount=empBreaks.length;
    const overageMinutes=effectiveOverageMinutes(empBreaks,cancelledNow);
 
    const previousPresentDays=prevAttendance.filter(a=>a.check_in).length;
-   const previousWorkMinutes=sumWorkSessions(prevWorkSessions,previousFrom,previousTo);
+   const previousWorkMinutes=sumWorkSessions(prevWorkSessions,previousFrom,previousTo,prevBreaks,prevAttendance);
    const previousBreakMinutes=prevBreaks.reduce((sum,b)=>sum+Number(b.actual_minutes||0),0);
    const previousBreakCount=prevBreaks.length;
    const previousOverageMinutes=effectiveOverageMinutes(prevBreaks,cancelledPrev);
@@ -7200,6 +7288,10 @@ setInterval(
    return;
 
   updateTimers();
+
+  // وقت العمل يزيد باستمرار، فنحدّث أرقام لوحة التحكم كل 5 ثوان.
+  window.__dashTick=(window.__dashTick||0)+1;
+  if(window.__dashTick%5===0) updateCustomDashboard();
 
  },
  1000
