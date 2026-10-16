@@ -1797,6 +1797,7 @@ html[data-theme] #uNav button{display:flex;align-items:center;gap:8px;padding:6p
     <div id="lateOrderDupHint" style="display:none;margin-top:8px;padding:8px 12px;border-radius:8px;background:#fef3c7;color:#92400e;font-size:13px"></div>
     <div style="margin-top:10px">
      <div id="lateReasonChips"></div>
+     <div id="lateReasonPicked" style="display:none;margin-top:8px;font-size:13px;font-weight:700"></div>
      <select id="lateOrderReasonSelect" onchange="handleLateReasonChange()" style="width:100%;padding:12px;border-radius:8px">
       <option value="">اختر سبب التأخير</option>
      </select>
@@ -1814,6 +1815,7 @@ html[data-theme] #uNav button{display:flex;align-items:center;gap:8px;padding:6p
      <button type="submit" class="btn-blue" id="lateOrderSubmitBtn">تسجيل الطلب المتأخر</button>
      <button type="button" class="btn-dark" onclick="loadLateOrders()">تحديث السجل</button>
      <button type="button" class="btn-dark" id="toggleLateOrdersVisibilityBtn" onclick="toggleLateOrdersVisibility()" aria-expanded="true">إخفاء قائمة السجلات</button>
+     <button type="button" class="btn-dark" id="toggleLateReasonAdminBtn" onclick="toggleLateReasonAdmin()" style="display:none">إظهار إدارة أسباب التأخير</button>
      <button type="button" class="btn-dark" id="clearLateOrdersBtn" onclick="clearLateOrdersSystemOnly()" style="display:none;background:#a93226">تصفير سجل النظام</button>
     </div>
    </form>
@@ -7297,13 +7299,17 @@ async function loadLateOrderReasons(){
  handleLateReasonChange();
 }
 
+let lateReasonAdminOpen=false;
+function toggleLateReasonAdmin(){lateReasonAdminOpen=!lateReasonAdminOpen;renderLateOrderReasonAdmin();}
 function renderLateOrderReasonAdmin(){
  try{if(window.renderLateReasonChips) window.renderLateReasonChips();}catch(_){}
  const panel=document.getElementById('lateReasonAdminPanel');
  const list=document.getElementById('lateReasonsAdminList');
  if(!panel||!list) return;
  const allowed=typeof isManagement==='function'&&isManagement();
- panel.style.display=allowed?'block':'none';
+ const tbtn=document.getElementById('toggleLateReasonAdminBtn');
+ if(tbtn){tbtn.style.display=allowed?'':'none';tbtn.textContent=lateReasonAdminOpen?'إخفاء إدارة أسباب التأخير':'إظهار إدارة أسباب التأخير';}
+ panel.style.display=(allowed&&lateReasonAdminOpen)?'block':'none';
  if(!allowed) return;
  list.innerHTML=lateOrderReasonsCache.length?lateOrderReasonsCache.map(r=>`<div style="display:flex;gap:8px;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid #ddd"><span>${esc(r.reason)}</span><div style="display:flex;gap:6px"><button type="button" class="btn-dark" onclick="editLateOrderReason(${Number(r.id)})">تعديل</button><button type="button" class="btn-dark" onclick="deactivateLateOrderReason(${Number(r.id)})">تعطيل</button></div></div>`).join(''):'<p class="muted">لا توجد أسباب ثابتة محفوظة بعد.</p>';
 }
@@ -7775,8 +7781,9 @@ window.addEventListener('load', restoreLateOrdersVisibility);
  const st=document.createElement('style');
  st.textContent=`
  #lateReasonChips{display:flex;flex-wrap:wrap;gap:8px}
- .lo-chip{padding:10px 16px;border-radius:999px;border:1px solid rgba(128,128,128,.45);background:transparent;color:inherit;font:inherit;font-size:14px;cursor:pointer}
- .lo-chip.on{background:#2563eb;border-color:#2563eb;color:#fff;font-weight:700}
+ #lateReasonChips .lo-chip{padding:10px 16px;border-radius:999px!important;border:1px solid rgba(128,128,128,.5)!important;background:rgba(128,128,128,.12)!important;color:inherit!important;font-size:14px;font-weight:600!important;cursor:pointer;box-shadow:none!important}
+ #lateReasonChips .lo-chip.on{background:#2563eb!important;border-color:#1d4ed8!important;color:#fff!important;font-weight:800!important;box-shadow:0 0 0 3px rgba(37,99,235,.4)!important}
+ #lateReasonChips .lo-chip.on::before{content:'✓ '}
  .lo-acts{display:inline-flex;gap:2px;margin-inline-start:6px}.lo-act{background:none;border:0;cursor:pointer;font-size:15px;padding:2px 4px}
  .lo-stats{margin-top:12px;border:1px solid rgba(128,128,128,.35);border-radius:12px;padding:10px 14px}.lo-stats summary{cursor:pointer;font-weight:700}
  .lo-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px;margin-top:12px}
@@ -7795,7 +7802,8 @@ window.addEventListener('load', restoreLateOrdersVisibility);
   box.innerHTML=opts.map(o=>`<button type="button" class="lo-chip" data-v="${esc(o.value)}">${o.value==='__other__'?'سبب آخر ✍️':esc(o.textContent)}</button>`).join('');
   sel.style.display='none';sel.required=false;window.syncLateChips();
  };
- window.syncLateChips=function(){const sel=$('lateOrderReasonSelect');document.querySelectorAll('#lateReasonChips .lo-chip').forEach(c=>c.classList.toggle('on',!!sel&&c.dataset.v===sel.value));};
+ window.syncLateChips=function(){const sel=$('lateOrderReasonSelect');document.querySelectorAll('#lateReasonChips .lo-chip').forEach(c=>c.classList.toggle('on',!!sel&&c.dataset.v===sel.value));
+  const pk=$('lateReasonPicked'),v=sel&&sel.value;if(pk){if(v){pk.style.display='block';pk.textContent='✓ السبب المختار: '+(v==='__other__'?'سبب آخر (اكتب التفاصيل)':v);}else pk.style.display='none';}};
  $('lateReasonChips')?.addEventListener('click',e=>{
   const c=e.target.closest('.lo-chip');if(!c)return;
   const sel=$('lateOrderReasonSelect');sel.value=c.dataset.v;sel.dispatchEvent(new Event('change'));
