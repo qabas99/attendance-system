@@ -1783,32 +1783,9 @@ html[data-theme] #uNav button{display:flex;align-items:center;gap:8px;padding:6p
 <div class="container">
 
   <!-- سجل الطلبات المتأخرة -->
-  <section class="card management-section employee-hidden" id="incentiveCard">
-   <h2>⭐ التحفيز والاعتراضات والتقارير</h2>
-   <h3>شكر / نقاط إيجابية يدوية</h3>
-   <div class="actions" style="justify-content:flex-start;flex-wrap:wrap">
-    <select id="thanksEmp"></select>
-    <input id="thanksPts" type="number" min="1" value="5" style="width:80px">
-    <input id="thanksWhy" placeholder="سبب الشكر" style="min-width:200px">
-    <button class="btn-green" onclick="addThanksPoints()">إضافة</button>
-   </div>
-   <div id="thanksList" class="muted" style="margin:8px 0"></div>
-   <h3>الاعتراضات المعلقة</h3>
-   <div id="appealsBody" class="muted" style="margin:8px 0"></div>
-   <h3>تقرير موظف (طباعة / PDF)</h3>
-   <div class="actions" style="justify-content:flex-start;flex-wrap:wrap">
-    <select id="repEmp"></select>
-    <select id="repKind"><option value="day">يومي</option><option value="week">أسبوعي</option><option value="month" selected>شهري</option></select>
-    <input id="repDate" type="date">
-    <input id="repNote" placeholder="ملاحظات المدير (تظهر بالتقرير)" style="min-width:220px">
-    <button class="btn-green" onclick="printEmployeeReport()">طباعة / PDF</button>
-   </div>
-  </section>
+  
 
-  <section class="card" id="myEvalCard" style="display:none">
-   <h2>📊 تقييمي</h2>
-   <div id="myEvalBody" class="muted">جارٍ التحميل...</div>
-  </section>
+  
 
   <section class="card" id="lateOrdersCard">
    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
@@ -2139,6 +2116,28 @@ html[data-theme] #uNav button{display:flex;align-items:center;gap:8px;padding:6p
   <div class="table-wrap"><table><thead><tr><th>الموظف</th><th>النوع</th><th>الملاحظة</th><th>التاريخ</th><th>الحالة</th><th>الإجراء</th></tr></thead><tbody id="permissionRequestsBody"><tr><td colspan="6">لا توجد طلبات أذونات</td></tr></tbody></table></div>
  </div>
 
+ <section class="card management-section employee-hidden" id="incentiveCard">
+   <h2>⭐ التحفيز والاعتراضات والتقارير</h2>
+   <h3>شكر / نقاط إيجابية يدوية</h3>
+   <div class="actions" style="justify-content:flex-start;flex-wrap:wrap">
+    <select id="thanksEmp"></select>
+    <input id="thanksPts" type="number" min="1" value="5" style="width:80px">
+    <input id="thanksWhy" placeholder="سبب الشكر" style="min-width:200px">
+    <button class="btn-green" onclick="addThanksPoints()">إضافة</button>
+   </div>
+   <div id="thanksList" class="muted" style="margin:8px 0"></div>
+   <h3>الاعتراضات المعلقة</h3>
+   <div id="appealsBody" class="muted" style="margin:8px 0"></div>
+   <h3>تقرير موظف (طباعة / PDF)</h3>
+   <div class="actions" style="justify-content:flex-start;flex-wrap:wrap">
+    <select id="repEmp"></select>
+    <select id="repKind"><option value="day">يومي</option><option value="week">أسبوعي</option><option value="month" selected>شهري</option></select>
+    <input id="repDate" type="date">
+    <input id="repNote" placeholder="ملاحظات المدير (تظهر بالتقرير)" style="min-width:220px">
+    <button class="btn-green" onclick="printEmployeeReport()">طباعة / PDF</button>
+   </div>
+  </section>
+
  <!-- التقارير -->
  <div class="card management-section" id="weeklyReportSection">
 
@@ -2204,6 +2203,11 @@ html[data-theme] #uNav button{display:flex;align-items:center;gap:8px;padding:6p
 
  </div>
 
+
+ <section class="card" id="myEvalCard" style="display:none">
+   <h2>📊 تقييمي</h2>
+   <div id="myEvalBody" class="muted">جارٍ التحميل...</div>
+  </section>
 
  <!-- تقييم الموظفين والمخالفات -->
  <div class="card" id="employeeEvaluationSection">
