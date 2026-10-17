@@ -1873,7 +1873,27 @@ html[data-theme] #uNav button{display:flex;align-items:center;gap:8px;padding:6p
    </div>
   </div>
 
-  <div class="dashboard-chart-box">
+  <div class="dashboard-summary-box" id="bestEmployeeBox" style="margin:14px 0">
+    <h3>🏆 أفضل موظف</h3>
+    <div class="actions" style="justify-content:flex-start;margin-bottom:10px">
+     <button class="btn-green" onclick="setBestEmployeePeriod('today')">اليوم</button>
+     <button class="btn-green" onclick="setBestEmployeePeriod('week')">هذا الأسبوع</button>
+     <button class="btn-green" onclick="setBestEmployeePeriod('month')">هذا الشهر</button>
+    </div>
+    <div id="bestEmployeeBody" class="muted">جارٍ الحساب...</div>
+   </div>
+
+  <div class="dashboard-summary-box" id="warningLadderBox" style="margin:14px 0">
+    <h3>⚠️ سلم الإنذارات</h3>
+    <div id="warningLadderBody" class="muted">جارٍ الحساب...</div>
+    <details style="margin-top:10px">
+     <summary>⚙️ إعداد القواعد</summary>
+     <div id="warningRulesBody" style="margin:8px 0"></div>
+     <button class="btn-green" onclick="addWarningRule()">+ قاعدة جديدة</button>
+    </details>
+   </div>
+
+   <div class="dashboard-chart-box">
    <h3>نسب لوحة التحكم</h3>
    <div class="dashboard-chart-grid">
     <div class="dashboard-chart-item">
@@ -3014,7 +3034,7 @@ async function loadAllData(options={}){
   currentEvaluationViolations=filterViolationsForShift(await loadViolations(shiftRange.from,shiftRange.to),shiftRange);
   await loadCancelledOverageBreaks(shiftRange.from,shiftRange.to);
  }catch(e){console.warn('Evaluation score refresh:',e);}
- populateEmployeeSelects(); renderTable(); updateStats(); renderPermissionRequests();
+ populateEmployeeSelects(); renderTable(); updateStats(); renderPermissionRequests(); renderBestEmployee().catch(()=>{}); renderWarningLadder().catch(()=>{});
  if(document.getElementById('employeeEvaluationSection')){ fillEvaluationEmployees(); }
  if(isAdmin() && options.accounts) loadAccountProfiles();
 }
@@ -6013,6 +6033,99 @@ function subscribeRealtime(){
  }
 }
 
+
+/* ===== أفضل موظف (اليوم / الأسبوع / الشهر) — نعرض الأفضل فقط ===== */
+let bestEmployeePeriod='week';
+function setBestEmployeePeriod(p){bestEmployeePeriod=p;renderBestEmployee(true).catch(()=>{});}
+async function renderBestEmployee(force){
+ const box=document.getElementById('bestEmployeeBody');
+ if(!box||!isManagement()) return;
+ if(!force&&Date.now()-(window.__bestAt||0)<60000) return;
+ window.__bestAt=Date.now();
+ const to=today();
+ const from=bestEmployeePeriod==='today'?currentShiftEvaluationRange().from
+  :bestEmployeePeriod==='week'?dateShift(to,-6):to.slice(0,7)+'-01';
+ try{
+  const [data,viol,cancelled]=await Promise.all([loadReportData(from,to),loadViolations(from,to),loadCancelledOverageIdsForRange(from,to)]);
+  const top=((allEmployeesList&&allEmployeesList.length?allEmployeesList:employeesList)||[]).map(e=>{
+   const id=Number(e.id),mine=a=>(a||[]).filter(x=>Number(x.employee_id)===id);
+   const br=mine(data.breaks);
+   return {e,work:sumWorkSessions(mine(data.workSessions),from,to,br,mine(data.attendance)),
+    over:effectiveOverageMinutes(br,cancelled),score:complianceScoreForPeriod(e,br,false,mine(viol))};
+  }).filter(r=>r.work>0).sort((a,b)=>b.score-a.score||a.over-b.over||b.work-a.work).slice(0,3);
+  box.innerHTML=top.length?top.map((r,i)=>`<div class="dashboard-mini"><span>${['🥇','🥈','🥉'][i]} ${esc(r.e.name)}</span><b>${r.score}% · ${minutesToText(r.work)}</b></div>`).join('')
+   :'لا توجد بيانات كافية لهذه الفترة.';
+ }catch(err){console.warn('best employee',err);box.textContent='تعذر حساب أفضل موظف.';}
+}
+
+
+/* ===== سلم الإنذارات (قواعد يحددها المدير) ===== */
+let warningRules=[];
+const WARN_METRICS={overage_week:'تجاوزات استراحة خلال 7 أيام (عدد ≥)',compliance_month:'نسبة الالتزام الشهرية (أقل من %)'};
+const WARN_ICON={'تنبيه':'🔔','إنذار':'⚠️','خصم':'🔴'};
+function renderWarningRulesEditor(){
+ const box=document.getElementById('warningRulesBody'); if(!box) return;
+ const opt=(list,v)=>list.map(([k,l])=>`<option value="${k}" ${k===v?'selected':''}>${l}</option>`).join('');
+ box.innerHTML=warningRules.length?warningRules.map(r=>`<div class="dashboard-mini" style="gap:6px;flex-wrap:wrap">
+  <select onchange="updateWarningRule(${r.id},'metric',this.value)">${opt(Object.entries(WARN_METRICS),r.metric)}</select>
+  <input type="number" value="${r.threshold}" style="width:70px" onchange="updateWarningRule(${r.id},'threshold',this.value)">
+  <select onchange="updateWarningRule(${r.id},'level',this.value)">${opt(['تنبيه','إنذار','خصم'].map(x=>[x,x]),r.level)}</select>
+  <input type="number" value="${r.extra_points}" title="نقاط الخصم (للمستوى خصم)" style="width:60px" onchange="updateWarningRule(${r.id},'extra_points',this.value)">
+  <label><input type="checkbox" ${r.active?'checked':''} onchange="updateWarningRule(${r.id},'active',this.checked)"> فعّالة</label>
+  <button class="btn-red" onclick="deleteWarningRule(${r.id})">حذف</button></div>`).join(''):'لا توجد قواعد.';
+}
+async function updateWarningRule(id,field,value){
+ if(['threshold','extra_points'].includes(field)) value=Number(value)||0;
+ const {error}=await supabaseClient.from('warning_rules').update({[field]:value}).eq('id',id);
+ if(error) return alert('تعذر حفظ القاعدة: '+error.message);
+ renderWarningLadder(true);
+}
+async function addWarningRule(){
+ const {error}=await supabaseClient.from('warning_rules').insert({metric:'overage_week',threshold:3,level:'تنبيه'});
+ if(error) return alert('تعذر إضافة القاعدة: '+error.message);
+ renderWarningLadder(true);
+}
+async function deleteWarningRule(id){
+ if(!confirm('حذف هذه القاعدة؟')) return;
+ const {error}=await supabaseClient.from('warning_rules').delete().eq('id',id);
+ if(error) return alert('تعذر الحذف: '+error.message);
+ renderWarningLadder(true);
+}
+async function applyWarningDeduction(empId,ruleId){
+ const r=warningRules.find(x=>x.id===ruleId); if(!r||!(r.extra_points>0)) return;
+ const note=`تصعيد إنذار rule:${r.id} period:${today().slice(0,7)}`;
+ const {data:ex}=await supabaseClient.from('employee_violations').select('id').eq('employee_id',empId).eq('note',note).limit(1);
+ if(ex&&ex.length) return alert('تم تطبيق هذا الخصم مسبقاً لهذا الشهر.');
+ if(!confirm(`تطبيق خصم ${r.extra_points} نقطة؟`)) return;
+ const {error}=await supabaseClient.from('employee_violations').insert({employee_id:empId,violation_type:'تصعيد إنذار',violation_date:today(),points:r.extra_points,note,source:'automatic',status:'active',created_by:currentUser.id});
+ if(error) return alert('تعذر تطبيق الخصم: '+error.message);
+ renderWarningLadder(true);
+}
+async function renderWarningLadder(force){
+ const box=document.getElementById('warningLadderBody');
+ if(!box||!isManagement()) return;
+ if(!force&&Date.now()-(window.__warnAt||0)<60000) return;
+ window.__warnAt=Date.now();
+ try{
+  const {data:rules,error}=await supabaseClient.from('warning_rules').select('*').order('id');
+  if(error) throw error;
+  warningRules=rules||[]; renderWarningRulesEditor();
+  const to=today(),wFrom=dateShift(to,-6),mFrom=to.slice(0,7)+'-01';
+  const [wk,mo,viol,canc]=await Promise.all([loadReportData(wFrom,to),loadReportData(mFrom,to),loadViolations(mFrom,to),loadCancelledOverageIdsForRange(mFrom,to)]);
+  const emps=(allEmployeesList&&allEmployeesList.length?allEmployeesList:employeesList)||[],hits=[];
+  for(const e of emps){
+   const id=Number(e.id),mine=a=>(a||[]).filter(x=>Number(x.employee_id)===id);
+   const over=mine(wk.breaks).filter(b=>effectiveOverageMinutes([b],canc)>0).length;
+   const comp=complianceScoreForPeriod(e,mine(mo.breaks),false,mine(viol));
+   for(const r of warningRules.filter(x=>x.active)){
+    if(r.metric==='overage_week'&&over>=r.threshold) hits.push({e,r,text:`${over} تجاوزات استراحة خلال 7 أيام`});
+    if(r.metric==='compliance_month'&&comp<r.threshold) hits.push({e,r,text:`نسبة الالتزام ${comp}% (أقل من ${r.threshold}%)`});
+   }
+  }
+  box.innerHTML=hits.length?hits.map(h=>`<div class="dashboard-mini"><span>${WARN_ICON[h.r.level]||''} <b>${h.r.level}</b> — ${esc(h.e.name)}: ${h.text}</span>${h.r.level==='خصم'&&h.r.extra_points>0?`<button class="btn-red" onclick="applyWarningDeduction(${h.e.id},${h.r.id})">تطبيق الخصم</button>`:''}</div>`).join(''):'لا توجد إنذارات حالياً ✅';
+ }catch(err){console.warn('warning ladder',err);box.textContent='تعذر تحميل القواعد (تأكد من تشغيل 4_warning_rules.sql).';}
+}
+
 /* =========================================================
    WEEKLY REPORT
 ========================================================= */
@@ -6335,11 +6448,8 @@ async function syncAutomaticBreakViolations(from,to,employeeId=''){
    const actual=Number(b.actual_minutes||((Date.parse(b.end_time)-Date.parse(b.start_time))/60000));
    over=Math.max(0,Math.floor(actual-Number(b.allowed_minutes)));
   }
-  if(over>0){
-   const breakIdentity=b.id!=null?String(b.id):`${b.start_time||date}-${b.end_time||''}`;
-   await insertOnce({employee:emp,type:'تجاوز الاستراحة',points:overPenalty,date,
-    note:`تجاوز وقت الاستراحة ${over} دقيقة (break:${breakIdentity})`,identity:breakIdentity});
-  }
+  // مخالفة تجاوز الاستراحة (المتدرجة) تنشئها قاعدة البيانات الآن (trigger) أو backfill_overage_violations،
+  // فلا ننشئ نسخة ثابتة من الواجهة حتى لا تتكرر.
 
   // مخالفة التدخين المبكر: تُسجّل إذا بدأت استراحة التدخين قبل مرور 60 دقيقة
   // من نهاية استراحة التدخين السابقة للموظف نفسه.
