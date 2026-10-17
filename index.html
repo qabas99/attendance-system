@@ -1783,6 +1783,33 @@ html[data-theme] #uNav button{display:flex;align-items:center;gap:8px;padding:6p
 <div class="container">
 
   <!-- سجل الطلبات المتأخرة -->
+  <section class="card management-section employee-hidden" id="incentiveCard">
+   <h2>⭐ التحفيز والاعتراضات والتقارير</h2>
+   <h3>شكر / نقاط إيجابية يدوية</h3>
+   <div class="actions" style="justify-content:flex-start;flex-wrap:wrap">
+    <select id="thanksEmp"></select>
+    <input id="thanksPts" type="number" min="1" value="5" style="width:80px">
+    <input id="thanksWhy" placeholder="سبب الشكر" style="min-width:200px">
+    <button class="btn-green" onclick="addThanksPoints()">إضافة</button>
+   </div>
+   <div id="thanksList" class="muted" style="margin:8px 0"></div>
+   <h3>الاعتراضات المعلقة</h3>
+   <div id="appealsBody" class="muted" style="margin:8px 0"></div>
+   <h3>تقرير موظف (طباعة / PDF)</h3>
+   <div class="actions" style="justify-content:flex-start;flex-wrap:wrap">
+    <select id="repEmp"></select>
+    <select id="repKind"><option value="day">يومي</option><option value="week">أسبوعي</option><option value="month" selected>شهري</option></select>
+    <input id="repDate" type="date">
+    <input id="repNote" placeholder="ملاحظات المدير (تظهر بالتقرير)" style="min-width:220px">
+    <button class="btn-green" onclick="printEmployeeReport()">طباعة / PDF</button>
+   </div>
+  </section>
+
+  <section class="card" id="myEvalCard" style="display:none">
+   <h2>📊 تقييمي</h2>
+   <div id="myEvalBody" class="muted">جارٍ التحميل...</div>
+  </section>
+
   <section class="card" id="lateOrdersCard">
    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
     <h2 style="margin:0">سجل الطلبات المتأخرة</h2>
@@ -3034,7 +3061,7 @@ async function loadAllData(options={}){
   currentEvaluationViolations=filterViolationsForShift(await loadViolations(shiftRange.from,shiftRange.to),shiftRange);
   await loadCancelledOverageBreaks(shiftRange.from,shiftRange.to);
  }catch(e){console.warn('Evaluation score refresh:',e);}
- populateEmployeeSelects(); renderTable(); updateStats(); renderPermissionRequests(); renderBestEmployee().catch(()=>{}); renderWarningLadder().catch(()=>{});
+ populateEmployeeSelects(); renderTable(); updateStats(); renderPermissionRequests(); renderBestEmployee().catch(()=>{}); renderWarningLadder().catch(()=>{}); renderIncentiveCard().catch(()=>{}); renderMyEvaluation().catch(()=>{}); awardAutoPoints().catch(()=>{});
  if(document.getElementById('employeeEvaluationSection')){ fillEvaluationEmployees(); }
  if(isAdmin() && options.accounts) loadAccountProfiles();
 }
@@ -6124,6 +6151,164 @@ async function renderWarningLadder(force){
   }
   box.innerHTML=hits.length?hits.map(h=>`<div class="dashboard-mini"><span>${WARN_ICON[h.r.level]||''} <b>${h.r.level}</b> — ${esc(h.e.name)}: ${h.text}</span>${h.r.level==='خصم'&&h.r.extra_points>0?`<button class="btn-red" onclick="applyWarningDeduction(${h.e.id},${h.r.id})">تطبيق الخصم</button>`:''}</div>`).join(''):'لا توجد إنذارات حالياً ✅';
  }catch(err){console.warn('warning ladder',err);box.textContent='تعذر تحميل القواعد (تأكد من تشغيل 4_warning_rules.sql).';}
+}
+
+
+/* ===== التحفيز: نقاط إيجابية + تقييمي + اعتراضات + تقارير PDF ===== */
+const CLEAN_WEEK_POINTS=5,FULL_MONTH_POINTS=10;
+const PERIODS={day:'يومي',week:'أسبوعي',month:'شهري'};
+function myEmployeeId(){return Number(currentProfile?.employee_id||0)||null;}
+function incentiveEmployees(){return ((allEmployeesList&&allEmployeesList.length?allEmployeesList:employeesList)||[]).filter(e=>e.active!==false);}
+function periodRange(kind,ref){
+ if(kind==='day') return {from:ref,to:ref};
+ if(kind==='week') return {from:dateShift(ref,-6),to:ref};
+ const [y,m]=ref.split('-').map(Number),last=new Date(Date.UTC(y,m,0)).getUTCDate();
+ const end=`${ref.slice(0,7)}-${String(last).padStart(2,'0')}`;
+ return {from:ref.slice(0,7)+'-01',to:end>today()?today():end};
+}
+function prevRange(kind,r){
+ if(kind==='day') return {from:dateShift(r.from,-1),to:dateShift(r.to,-1)};
+ if(kind==='week') return {from:dateShift(r.from,-7),to:dateShift(r.to,-7)};
+ return periodRange('month',dateShift(r.from,-1));
+}
+async function loadPositivePoints(from,to,employeeId){
+ const {start,end}=baghdadRangeUtc(from,to);
+ let q=supabaseClient.from('positive_points').select('*').gte('created_at',start).lte('created_at',end).order('created_at',{ascending:false});
+ if(employeeId) q=q.eq('employee_id',employeeId);
+ const {data,error}=await q; if(error) throw error; return data||[];
+}
+async function employeeSummary(e,from,to){
+ const [data,viol,pos,canc]=await Promise.all([loadReportData(from,to),loadViolations(from,to,e.id),loadPositivePoints(from,to,e.id),loadCancelledOverageIdsForRange(from,to)]);
+ const mine=a=>(a||[]).filter(x=>Number(x.employee_id)===Number(e.id)),br=mine(data.breaks);
+ const ded=viol.reduce((s,v)=>s+Math.max(0,Number(v.points||0)),0),posTotal=pos.reduce((s,p)=>s+Number(p.points||0),0);
+ const comp=complianceScoreForPeriod(e,br,false,viol);
+ return {comp,posTotal,ded,viol,pos,net:Math.min(120,comp+posTotal),breaks:br.length,over:effectiveOverageMinutes(br,canc),
+  work:sumWorkSessions(mine(data.workSessions),from,to,br,mine(data.attendance))};
+}
+
+/* --- نقاط الشكر اليدوية --- */
+async function addThanksPoints(){
+ const emp=Number(document.getElementById('thanksEmp').value),pts=Number(document.getElementById('thanksPts').value),why=document.getElementById('thanksWhy').value.trim();
+ if(!emp||!(pts>0)||!why) return showToast('اختر الموظف واكتب النقاط والسبب');
+ const {error}=await supabaseClient.from('positive_points').insert({employee_id:emp,points:pts,reason:why,kind:'manual',created_by:currentUser.id});
+ if(error) return alert('تعذر الحفظ: '+error.message);
+ document.getElementById('thanksWhy').value=''; showToast('تمت إضافة نقاط الشكر ✅'); renderRecentThanks();
+}
+async function deleteThanks(id){
+ if(!confirm('حذف نقاط الشكر هذه؟')) return;
+ const {error}=await supabaseClient.from('positive_points').delete().eq('id',id);
+ if(error) return alert(error.message); renderRecentThanks();
+}
+async function renderRecentThanks(){
+ const box=document.getElementById('thanksList'); if(!box) return;
+ const {data,error}=await supabaseClient.from('positive_points').select('*').order('created_at',{ascending:false}).limit(8);
+ if(error){box.textContent='شغّل 5_incentives.sql أولاً';return;}
+ const L=incentiveEmployees();
+ box.innerHTML=(data||[]).map(p=>`<div class="dashboard-mini"><span>${p.kind==='manual'?'⭐':'🤖'} ${esc(L.find(e=>Number(e.id)===Number(p.employee_id))?.name||'')} — +${p.points}: ${esc(p.reason)}</span>${p.kind==='manual'?`<button class="btn-red" onclick="deleteThanks(${p.id})">حذف</button>`:''}</div>`).join('')||'لا توجد نقاط بعد.';
+}
+
+/* --- منح تلقائي: أسبوع نظيف (الإثنين–الأحد الماضي) + حضور كامل (الشهر الماضي) --- */
+async function awardAutoPoints(){
+ if(!isManagement()||Date.now()-(window.__awardAt||0)<600000) return; window.__awardAt=Date.now();
+ try{
+  const now=today(),emps=incentiveEmployees(),rows=[];
+  const dow=new Date(now+'T00:00:00Z').getUTCDay(),thisMon=dateShift(now,-((dow+6)%7)),wFrom=dateShift(thisMon,-7),wTo=dateShift(thisMon,-1);
+  const [wk,canc]=await Promise.all([loadReportData(wFrom,wTo),loadCancelledOverageIdsForRange(wFrom,wTo)]);
+  const pm=periodRange('month',dateShift(now.slice(0,7)+'-01',-1));
+  const [mo,mv]=await Promise.all([loadReportData(pm.from,pm.to),loadViolations(pm.from,pm.to)]);
+  const bad=['غياب بدون إذن','خروج بدون تبليغ'];
+  for(const e of emps){
+   const id=Number(e.id),m=a=>(a||[]).filter(x=>Number(x.employee_id)===id);
+   if(m(wk.attendance).length>=1&&effectiveOverageMinutes(m(wk.breaks),canc)===0)
+    rows.push({employee_id:id,points:CLEAN_WEEK_POINTS,reason:'أسبوع بدون تجاوز استراحة',kind:'clean_week',period:wFrom,created_by:currentUser.id});
+   if(m(mo.attendance).length>=1&&!mv.some(v=>Number(v.employee_id)===id&&bad.includes(v.violation_type)))
+    rows.push({employee_id:id,points:FULL_MONTH_POINTS,reason:'حضور كامل خلال الشهر',kind:'full_month',period:pm.from,created_by:currentUser.id});
+  }
+  if(rows.length) await supabaseClient.from('positive_points').upsert(rows,{onConflict:'employee_id,kind,period',ignoreDuplicates:true});
+ }catch(err){console.warn('award points',err);}
+}
+
+/* --- الاعتراضات (جهة الإدارة) --- */
+async function renderAppealsInbox(){
+ const box=document.getElementById('appealsBody'); if(!box) return;
+ const {data:ap,error}=await supabaseClient.from('violation_appeals').select('*').eq('status','pending').order('created_at');
+ if(error){box.textContent='شغّل 5_incentives.sql أولاً';return;}
+ if(!ap.length){box.textContent='لا توجد اعتراضات معلقة ✅';return;}
+ const {data:vs}=await supabaseClient.from('employee_violations').select('*').in('id',ap.map(a=>a.violation_id));
+ const L=incentiveEmployees();
+ box.innerHTML=ap.map(a=>{const v=(vs||[]).find(x=>x.id===a.violation_id)||{};
+  return `<div class="dashboard-mini" style="flex-wrap:wrap;gap:6px"><span><b>${esc(L.find(e=>Number(e.id)===Number(a.employee_id))?.name||'')}</b> — ${esc(v.violation_type||'')} (${v.points||0} نقطة)<br>السبب: ${esc(a.reason)}</span>
+  <span><button class="btn-green" onclick="decideAppeal(${a.id},${a.violation_id},true)">قبول (إلغاء المخالفة)</button> <button class="btn-red" onclick="decideAppeal(${a.id},${a.violation_id},false)">رفض</button></span></div>`;}).join('');
+}
+async function decideAppeal(id,vid,accept){
+ const note=(prompt(accept?'ملاحظة (اختياري):':'سبب الرفض:')||'').trim();
+ if(!accept&&!note) return showToast('اكتب سبب الرفض');
+ const {error}=await supabaseClient.from('violation_appeals').update({status:accept?'accepted':'rejected',manager_note:note,decided_by:currentUser.id,decided_at:new Date().toISOString()}).eq('id',id).eq('status','pending');
+ if(error) return alert(error.message);
+ if(accept){const r=await supabaseClient.from('employee_violations').update({status:'cancelled'}).eq('id',vid); if(r.error) return alert(r.error.message);}
+ showToast('تم'); window.__warnAt=0; window.__bestAt=0; renderAppealsInbox();
+}
+
+/* --- صفحة "تقييمي" (الموظف) --- */
+async function submitAppeal(violationId){
+ const why=(prompt('اكتب سبب اعتراضك على هذه المخالفة:')||'').trim();
+ if(why.length<5) return showToast('اكتب سبباً واضحاً (5 أحرف على الأقل)');
+ const {error}=await supabaseClient.from('violation_appeals').insert({violation_id:violationId,employee_id:myEmployeeId(),reason:why});
+ if(error) return alert(error.message.includes('ux_appeal')?'سبق الاعتراض على هذه المخالفة':'تعذر الإرسال: '+error.message);
+ showToast('وصل اعتراضك للإدارة ✅'); renderMyEvaluation(true);
+}
+async function renderMyEvaluation(force){
+ const card=document.getElementById('myEvalCard'),body=document.getElementById('myEvalBody'),eid=myEmployeeId();
+ if(!card||!body) return;
+ if(currentProfile?.role!=='employee'||!eid){card.style.display='none';return;}
+ card.style.display='';
+ if(!force&&Date.now()-(window.__myEvalAt||0)<60000) return; window.__myEvalAt=Date.now();
+ try{
+  const to=today(),from=to.slice(0,7)+'-01',s=await employeeSummary({id:eid},from,to);
+  const {data:aps}=await supabaseClient.from('violation_appeals').select('*').eq('employee_id',eid);
+  const weeks={}; s.viol.forEach(v=>{const w=Math.floor((Number(String(v.violation_date).slice(8,10))-1)/7)+1;weeks[w]=(weeks[w]||0)+Math.max(0,Number(v.points||0));});
+  const trend=Object.keys(weeks).sort().map(w=>`<div>الأسبوع ${w}: ${'█'.repeat(Math.min(20,weeks[w]))} ${weeks[w]}</div>`).join('')||'لا خصومات هذا الشهر 👏';
+  const stat=(k,v)=>`<div class="dashboard-mini"><span>${k}</span><b>${v}</b></div>`;
+  const apTxt=v=>{const a=(aps||[]).find(x=>Number(x.violation_id)===Number(v.id));
+   if(!a) return `<button class="btn-green" onclick="submitAppeal(${v.id})">اعتراض</button>`;
+   return a.status==='pending'?'⏳ الاعتراض قيد المراجعة':a.status==='rejected'?`❌ رُفض: ${esc(a.manager_note||'')}`:'✅ قُبل';};
+  body.innerHTML=stat('نسبة الالتزام',s.comp+'%')+stat('نقاط إيجابية','+'+s.posTotal)+stat('إجمالي الخصومات','-'+s.ded)+stat('الصافي',s.net)
+   +`<h3>تطور الشهر</h3>${trend}<h3>مخالفاتي</h3>`
+   +(s.viol.map(v=>`<div class="dashboard-mini" style="flex-wrap:wrap;gap:6px"><span>${esc(v.violation_date)} — <b>${esc(v.violation_type)}</b> (-${v.points})<br><small>${esc(String(v.note||'').replace(/break_id=\d+\s*\|?\s*/,'').replace(/\(break:\d+\)/,''))}</small></span><span>${apTxt(v)}</span></div>`).join('')||'لا توجد مخالفات 👏')
+   +`<h3>نقاطي الإيجابية</h3>`+(s.pos.map(p=>`<div class="dashboard-mini"><span>${esc(p.reason)}</span><b>+${p.points}</b></div>`).join('')||'لا توجد بعد.');
+ }catch(err){console.warn('my eval',err);body.textContent='تعذر تحميل التقييم (تأكد من تشغيل 5_incentives.sql).';}
+}
+
+/* --- لوحة الإدارة + تقرير الموظف للطباعة (يومي/أسبوعي/شهري) --- */
+function fillIncentiveSelects(){
+ const L=incentiveEmployees(),opts=L.map(e=>`<option value="${e.id}">${esc(e.name)}</option>`).join('');
+ ['thanksEmp','repEmp'].forEach(id=>{const s=document.getElementById(id);if(s&&s.options.length!==L.length)s.innerHTML=opts;});
+ const d=document.getElementById('repDate'); if(d&&!d.value) d.value=today();
+}
+async function renderIncentiveCard(){
+ if(!document.getElementById('incentiveCard')||!isManagement()) return;
+ fillIncentiveSelects(); renderRecentThanks(); renderAppealsInbox();
+}
+async function printEmployeeReport(){
+ const id=Number(document.getElementById('repEmp').value),kind=document.getElementById('repKind').value,ref=document.getElementById('repDate').value||today(),note=document.getElementById('repNote').value.trim();
+ const e=incentiveEmployees().find(x=>Number(x.id)===id); if(!e) return showToast('اختر الموظف');
+ const w=window.open('','_blank'); if(!w) return showToast('اسمح بالنوافذ المنبثقة ثم أعد المحاولة');
+ try{
+  const r=periodRange(kind,ref),p=prevRange(kind,r),[s,ps]=await Promise.all([employeeSummary(e,r.from,r.to),employeeSummary(e,p.from,p.to)]);
+  const df=(a,b)=>a===b?'بدون تغيير':`${a>b?'▲':'▼'} ${Math.abs(a-b)}`;
+  const row=(k,a,b,fa=x=>x)=>`<tr><td>${k}</td><td>${fa(a)}</td><td>${fa(b)}</td><td>${df(a,b)}</td></tr>`;
+  w.document.write(`<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>تقرير ${esc(e.name)}</title>
+<style>body{font-family:Tahoma,Arial,sans-serif;padding:24px;color:#111}h1{font-size:20px}h3{margin:16px 0 4px}table{width:100%;border-collapse:collapse}td,th{border:1px solid #bbb;padding:6px 8px;text-align:right;font-size:13px}th{background:#eee}.note{border:1px solid #bbb;padding:10px;min-height:48px}@media print{button{display:none}}</style></head><body>
+<button onclick="print()">طباعة / حفظ PDF</button>
+<h1>تقرير ${PERIODS[kind]} — ${esc(e.name)}</h1><p>الفترة: ${r.from} إلى ${r.to} &nbsp;|&nbsp; مقارنة مع: ${p.from} إلى ${p.to}</p>
+<table><tr><th>المؤشر</th><th>هذه الفترة</th><th>الفترة السابقة</th><th>التغيير</th></tr>
+${row('نسبة الالتزام %',s.comp,ps.comp)}${row('النقاط الإيجابية',s.posTotal,ps.posTotal)}${row('إجمالي الخصومات',s.ded,ps.ded)}${row('الصافي',s.net,ps.net)}
+${row('وقت العمل',s.work,ps.work,minutesToText)}${row('عدد الاستراحات',s.breaks,ps.breaks)}${row('دقائق التجاوز',s.over,ps.over)}${row('عدد المخالفات',s.viol.length,ps.viol.length)}</table>
+<h3>المخالفات</h3><table><tr><th>التاريخ</th><th>النوع</th><th>النقاط</th><th>التفاصيل</th></tr>${s.viol.map(v=>`<tr><td>${esc(v.violation_date)}</td><td>${esc(v.violation_type)}</td><td>${v.points}</td><td>${esc(v.note||'')}</td></tr>`).join('')||'<tr><td colspan="4">لا توجد مخالفات</td></tr>'}</table>
+<h3>النقاط الإيجابية</h3><table><tr><th>السبب</th><th>النقاط</th></tr>${s.pos.map(x=>`<tr><td>${esc(x.reason)}</td><td>+${x.points}</td></tr>`).join('')||'<tr><td colspan="2">لا توجد</td></tr>'}</table>
+<h3>ملاحظات المدير</h3><div class="note">${esc(note)||'&nbsp;'}</div></body></html>`);
+  w.document.close(); setTimeout(()=>w.print(),400);
+ }catch(err){w.close();alert('تعذر إنشاء التقرير: '+err.message);}
 }
 
 /* =========================================================
